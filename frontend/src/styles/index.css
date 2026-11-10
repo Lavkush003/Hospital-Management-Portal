@@ -1,0 +1,51 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans:
+    'Segoe UI', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Helvetica Neue',
+    Arial, sans-serif;
+
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 18px 45px -24px rgb(15 23 42 / 0.22);
+  --shadow-card-hover: 0 2px 4px rgb(15 23 42 / 0.05), 0 24px 55px -24px rgb(15 23 42 / 0.28);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    color: #0f172a;
+    background-color: #f8fafc;
+    background-image:
+      radial-gradient(65rem 32rem at 85% -12%, rgb(219 234 254 / 0.9), transparent),
+      radial-gradient(42rem 28rem at -5% 8%, rgb(204 251 241 / 0.65), transparent);
+    background-repeat: no-repeat;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  ::selection {
+    color: #172554;
+    background-color: #bfdbfe;
+  }
+}
