@@ -4,6 +4,12 @@
     "rootDir": ".",
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts", "scripts/**/*.ts", "prisma.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "prisma/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "prisma.config.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

@@ -33,6 +33,8 @@ erDiagram
 
   USER |o--o{ AUDIT_LOG : "acts in"
   USER ||--o{ IDEMPOTENCY_KEY : "owns"
+  USER ||--o{ REFRESH_TOKEN : "authenticates with"
+  REFRESH_TOKEN |o--o| REFRESH_TOKEN : "replaced by"
 
   USER {
     string id PK
@@ -43,6 +45,8 @@ erDiagram
     string firstName
     string lastName
     datetime lastLoginAt
+    int authVersion
+    datetime passwordChangedAt
   }
 
   PATIENT {
@@ -213,6 +217,21 @@ erDiagram
     json responseBody
     datetime expiresAt
   }
+
+  REFRESH_TOKEN {
+    string id PK
+    string userId FK
+    string tokenHash UK
+    string familyId
+    datetime expiresAt
+    datetime revokedAt
+    string revokedReason
+    string replacedByTokenId FK
+    string ipAddress
+    string userAgent
+    datetime createdAt
+    datetime updatedAt
+  }
 ```
 
 ## Relationship summary
@@ -241,6 +260,8 @@ erDiagram
 | `Payment.receivedById`            | `User`         | Zero or one receiving user     | `SetNull`  |
 | `AuditLog.actorUserId`            | `User`         | Zero or one acting user        | `SetNull`  |
 | `IdempotencyKey.actorUserId`      | `User`         | Exactly one acting user        | `Cascade`  |
+| `RefreshToken.userId`             | `User`         | Exactly one token owner        | `Cascade`  |
+| `RefreshToken.replacedByTokenId`  | `RefreshToken` | Zero or one replacement token  | `SetNull`  |
 
 `AuditLog.entityType` and `AuditLog.entityId` are a deliberate polymorphic reference.
 They are not a foreign key because audit records may outlive the entity they describe.
@@ -252,7 +273,7 @@ They are not a foreign key because audit records may outlive the entity they des
 - **Clinical encounter:** `Visit`, `Prescription`, `PrescriptionItem`, and
   `DiagnosticReport`.
 - **Revenue cycle:** `Invoice`, `InvoiceItem`, and `Payment`.
-- **Cross-cutting control:** `AuditLog` and `IdempotencyKey`.
+- **Cross-cutting control:** `AuditLog`, `IdempotencyKey`, and `RefreshToken`.
 
 Clinical and billing records are always reached through `Visit`. This keeps a single
 patient/doctor encounter as the source of truth while preserving historical records when a

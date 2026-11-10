@@ -65,13 +65,14 @@ The backend is organized as a conventional layered modular monolith:
 | Directory    | Responsibility                                                        |
 | ------------ | --------------------------------------------------------------------- |
 | `config`     | Validated environment, structured logger, and Prisma client lifecycle |
-| `middleware` | Cross-cutting request logging, not-found handling, and error handling |
+| `middleware` | Authentication, authorization, CSRF, validation, logging, and errors  |
 | `modules`    | Vertical feature modules with their own routes and controllers        |
 | `routes`     | Composition of module routers under the `/api` prefix                 |
 | `services`   | Reusable application services independent of HTTP transport           |
+| `tests`      | Isolated integration tests using the real API and database            |
 | `types`      | API contracts and backend-owned types                                 |
-| `utils`      | Typed error classes and framework-independent helpers                 |
-| `validators` | Runtime schemas for configuration and future request validation       |
+| `utils`      | Typed error classes, auth helpers, and framework-independent helpers  |
+| `validators` | Runtime schemas for configuration and request validation              |
 
 ### Request lifecycle
 
@@ -82,12 +83,13 @@ Request
   -> CORS allowlist
   -> JSON/urlencoded body parsing
   -> /api router
-  -> Health module
+  -> Module middleware (authentication, permission, CSRF, validation)
+  -> Module controller and service
   -> 404 handler or error handler
   -> Response
 ```
 
-The health module currently follows this internal shape:
+The health module follows this internal shape:
 
 ```text
 modules/health/health.routes.ts
@@ -96,7 +98,17 @@ modules/health/health.routes.ts
   -> typed health response
 ```
 
-Future modules such as patients, appointments, staff, and billing should follow the same boundaries:
+Authentication follows the same layering:
+
+```text
+modules/auth/auth.routes.ts
+  -> rate limiting, CSRF, request validation, authentication
+  -> modules/auth/auth.controller.ts
+  -> modules/auth/auth.service.ts
+  -> Prisma transaction and audit log
+```
+
+Additional modules should follow the same boundaries:
 
 1. Define runtime validators.
 2. Define transport-independent service functions.
@@ -135,20 +147,42 @@ The frontend validates its public environment with Zod in `src/utils/env.ts`. Fr
 
 Prisma reads `DATABASE_URL` from the backend environment. The client is created once and reused, with a development singleton guard to avoid duplicate clients during hot reload. The client is disconnected during graceful shutdown.
 
-The schema now defines 16 domain models, 17 enums, and committed migrations. PostgreSQL enforces the critical invariants through a `btree_gist` appointment exclusion constraint, case-insensitive email indexes, and 27 CHECK constraints. Synthetic development data is loaded through `backend/prisma/seed.ts`.
+The schema now defines 17 models, 17 enums, and three committed migrations. PostgreSQL enforces the critical invariants through a `btree_gist` appointment exclusion constraint, case-insensitive email indexes, and 30 CHECK constraints. Synthetic development data is loaded through `backend/prisma/seed.ts`.
 
-The appointment domain service is implemented without exposing HTTP routes yet. It performs idempotent booking, rescheduling, and cancellation in transactions, writes audit records, locks appointment rows for state changes, and maps database exclusion violations to application conflicts.
+The appointment domain service is implemented without exposing mutation HTTP routes yet. It performs idempotent booking, rescheduling, and cancellation in transactions, writes audit records, locks appointment rows for state changes, and maps database exclusion violations to application conflicts.
 
 The complete data-layer specification is maintained in the [ER diagram](database/er-diagram.md), [data dictionary](database/data-dictionary.md), and [relationships and constraints guide](database/relationships-and-constraints.md).
+
+### Authentication and authorization
+
+`modules/auth` implements bcrypt login, short-lived HS256 access JWTs, and opaque rotating
+refresh tokens stored as HMAC-SHA-256 hashes. Refresh tokens are grouped into families so
+reuse detection can revoke every descendant. Password changes increment `User.authVersion`,
+which invalidates previously issued access tokens and revokes all active refresh tokens.
+
+Access tokens are sent in the `Authorization: Bearer` header. The refresh token and CSRF
+token use scoped cookies, and refresh/logout require a matching `X-CSRF-Token` header. The
+authenticate middleware reloads the user on every protected request and rejects missing
+accounts, inactive accounts, stale roles, and stale auth versions.
+
+`modules/access` provides protected proof endpoints for the assessment. Role permissions
+are centralized in `auth.permissions.ts`; resource-level checks additionally limit
+clinicians to patients they are assigned to through appointments or visits, and to their
+own doctor schedules. Unauthorized clinician resource probes return `404` instead of
+revealing whether an unrelated record exists.
 
 ### Security
 
 - Helmet sets HTTP security headers.
-- CORS is restricted to configured origins.
+- CORS is restricted to configured origins and allows the `X-CSRF-Token` header.
 - The Express fingerprint header is disabled.
 - Request payloads are limited to 1 MB.
 - Secrets are required, length-validated, and excluded from source control.
-- JWT and bcrypt are installed and configured for the authentication phase.
+- Passwords use bcrypt; refresh tokens are stored only as keyed hashes.
+- Access tokens are checked against current account status, role, and auth version.
+- Refresh rotation, family revocation, CSRF double-submit checks, and rate limiting protect
+  session renewal.
+- Authentication events are audited without passwords or raw tokens.
 - Error responses do not disclose internals.
 
 ### Graceful shutdown
@@ -165,6 +199,16 @@ npm run verify
 
 It requires successful TypeScript compilation, ESLint, and production builds for both workspaces. The health endpoint can be checked at `http://localhost:4000/api/health` while the development server is running.
 
+Authentication integration tests run against the real API and database:
+
+```bash
+npm test
+```
+
+They create `authtest-` fixtures, exercise login, cookies, CSRF, refresh rotation and
+reuse, logout, password changes, RBAC, resource scoping, rate limiting, and audit logging,
+then remove their data.
+
 The database gate is:
 
 ```bash
@@ -175,4 +219,8 @@ It requires a running, migrated, and seeded PostgreSQL database plus a valid bac
 
 ## Scope boundary
 
-The foundation and data architecture are complete, including the appointment domain service. Authentication routes, role-based authorization, patient/appointment/billing HTTP endpoints, and the hospital user interface remain deferred. The architecture is ready for those modules without introducing new deployables or changing the overall request lifecycle.
+The foundation, data architecture, appointment domain service, authentication, and
+resource-scoped authorization APIs are complete. The hospital workflow UI, appointment and
+billing mutation APIs, and broader operational modules remain deferred. The architecture is
+ready for those modules without introducing new deployables or changing the overall request
+lifecycle.

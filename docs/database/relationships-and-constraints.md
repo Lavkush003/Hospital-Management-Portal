@@ -43,6 +43,8 @@ transactional behavior expected from application services.
 | `User -> Payment.receivedBy`        | No       | `SetNull`       | Keep payment even if the operator account is removed   |
 | `User -> AuditLog.actor`            | No       | `SetNull`       | Audit entries survive account removal                  |
 | `User -> IdempotencyKey.actor`      | Yes      | `Cascade`       | Keys are scoped to their actor                         |
+| `User -> RefreshToken`              | Yes      | `Cascade`       | Sessions belong to their account                       |
+| `RefreshToken -> replacedByToken`   | No       | `SetNull`       | Keep rotation history if a linked session is removed   |
 
 `Visit.appointmentId` and `Invoice.visitId` are both unique. The schema therefore permits
 at most one visit per appointment and exactly one invoice per visit. The application
@@ -52,7 +54,7 @@ clinical encounter.
 ## Custom CHECK constraints
 
 Prisma cannot express these rules in `schema.prisma`, so they are added by the
-`20261110070100_appointment_integrity` migration.
+`20261110070100_appointment_integrity` and `20261110073328_auth_refresh_tokens` migrations.
 
 | Constraint                                       | Rule                                                                   |
 | ------------------------------------------------ | ---------------------------------------------------------------------- |
@@ -83,6 +85,9 @@ Prisma cannot express these rules in `schema.prisma`, so they are added by the
 | `Payment_completed_requires_date_check`          | A completed payment must have `paidAt`                                 |
 | `IdempotencyKey_expiry_check`                    | `expiresAt > createdAt`                                                |
 | `IdempotencyKey_response_status_check`           | `responseStatusCode IS NULL OR responseStatusCode BETWEEN 100 AND 599` |
+| `RefreshToken_expiry_check`                      | `expiresAt > createdAt`                                                |
+| `RefreshToken_revocation_time_check`             | `revokedAt IS NULL OR revokedAt >= createdAt`                          |
+| `RefreshToken_no_self_replacement_check`         | `replacedByTokenId IS NULL OR replacedByTokenId <> id`                 |
 
 ## Appointment overlap exclusion
 
@@ -141,6 +146,7 @@ or contact identities while preserving the original casing of stored addresses.
 | `Payment`          | `(invoiceId, status)`, `(paidAt)`, `(receivedById)`                                                                                                                        |
 | `AuditLog`         | `(entityType, entityId, createdAt)`, `(actorUserId, createdAt)`, `(createdAt)`, `(requestId)`                                                                              |
 | `IdempotencyKey`   | Unique `(actorUserId, scope, key)`, `(expiresAt)`, `(status, expiresAt)`, `(resourceType, resourceId)`                                                                     |
+| `RefreshToken`     | Unique `(tokenHash)`, unique `(replacedByTokenId)`, `(userId, familyId)`, `(familyId)`, `(expiresAt)`, `(revokedAt, expiresAt)`                                            |
 
 Indexes support the primary access paths: finding a patient by name or phone, listing a
 doctor's schedule and appointments, loading a visit timeline, reconciling invoices and
@@ -180,6 +186,20 @@ The exclusion constraint serializes competing bookings for the same doctor and t
 - Failed mutations do not leave completed keys because the key and mutation share one
   transaction.
 
+### Refresh-token rotation
+
+1. Hash the presented opaque token and lock the matching row with `SELECT ... FOR UPDATE`.
+2. Reject missing, expired, inactive-account, or already-revoked tokens.
+3. If a revoked token is presented, revoke every still-active token in its family and
+   record reuse detection.
+4. Otherwise, insert a replacement token in the same family, then mark the previous token
+   `ROTATED` and link it through `replacedByTokenId`.
+5. Logout revokes the whole family. Password changes revoke every active token for the user
+   and increment `User.authVersion`, invalidating outstanding access tokens.
+
+Refresh-token values are never stored directly. Only an HMAC-SHA-256 hash keyed with
+`JWT_REFRESH_SECRET` is persisted, so a database disclosure does not expose usable tokens.
+
 ## Time, date, and money rules
 
 - All event timestamps use `timestamptz(3)`.
@@ -200,8 +220,8 @@ npm run db:verify
 
 The verification script checks:
 
-- PostgreSQL connectivity and the two applied migrations.
-- All 16 model tables, `btree_gist`, 27 custom constraints, and three lower-email indexes.
+- PostgreSQL connectivity and the three applied migrations.
+- All 17 model tables, `btree_gist`, 30 custom constraints, and three lower-email indexes.
 - Seeded row counts and absence of orphan visits, invoices, payments, and prescription items.
 - Case-insensitive email rejection.
 - Overlap rejection, cancelled-overlap acceptance, and adjacent-slot acceptance.

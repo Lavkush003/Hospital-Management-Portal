@@ -137,20 +137,23 @@ enum IdempotencyStatus {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique @db.VarChar(320)
-  passwordHash String     @db.VarChar(255)
-  role         UserRole
-  status       UserStatus @default(ACTIVE)
-  firstName    String     @db.VarChar(100)
-  lastName     String     @db.VarChar(100)
-  phone        String?    @db.VarChar(32)
-  lastLoginAt  DateTime?  @db.Timestamptz(3)
-  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+  id                String     @id @default(cuid())
+  email             String     @unique @db.VarChar(320)
+  passwordHash      String     @db.VarChar(255)
+  role              UserRole
+  status            UserStatus @default(ACTIVE)
+  firstName         String     @db.VarChar(100)
+  lastName          String     @db.VarChar(100)
+  phone             String?    @db.VarChar(32)
+  lastLoginAt       DateTime?  @db.Timestamptz(3)
+  authVersion       Int        @default(0)
+  passwordChangedAt DateTime?  @db.Timestamptz(3)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
 
   doctor                  Doctor?
   staff                   Staff?
+  refreshTokens           RefreshToken[]
   auditLogs               AuditLog[]       @relation("AuditActor")
   createdAppointments     Appointment[]    @relation("AppointmentCreatedBy")
   cancelledAppointments   Appointment[]    @relation("AppointmentCancelledBy")
@@ -512,4 +515,28 @@ model IdempotencyKey {
   @@index([expiresAt])
   @@index([status, expiresAt])
   @@index([resourceType, resourceId])
+}
+
+model RefreshToken {
+  id                String    @id @default(cuid())
+  userId            String
+  tokenHash         String    @unique @db.VarChar(64)
+  familyId          String    @db.VarChar(64)
+  expiresAt         DateTime  @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+  revokedReason     String?   @db.VarChar(100)
+  replacedByTokenId String?   @unique
+  ipAddress         String?   @db.VarChar(45)
+  userAgent         String?   @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedByToken RefreshToken? @relation("RefreshTokenRotation", fields: [replacedByTokenId], references: [id], onDelete: SetNull)
+  replacesToken   RefreshToken? @relation("RefreshTokenRotation")
+
+  @@index([userId, familyId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@index([revokedAt, expiresAt])
 }

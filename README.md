@@ -1,16 +1,16 @@
 # Hospital Management System
 
-Production-oriented Hospital Management System for the Algions AI Labs Full-Stack Web Development assessment. The current phase establishes the secure full-stack foundation and a complete PostgreSQL/Prisma data architecture. Business APIs and the hospital user interface remain intentionally deferred.
+Production-oriented Hospital Management System for the Algions AI Labs Full-Stack Web Development assessment. The current phase establishes the secure full-stack foundation, a complete PostgreSQL/Prisma data architecture, authentication, role-based authorization, and resource-scoped proof APIs. The hospital business user interface remains intentionally deferred.
 
 ## Technology
 
-| Layer          | Stack                                                      |
-| -------------- | ---------------------------------------------------------- |
-| Frontend       | React, Vite, TypeScript, Tailwind CSS 4, React Router      |
-| Backend        | Node.js, Express, TypeScript                               |
-| Data           | PostgreSQL 18, Prisma ORM 6                                |
-| Authentication | JWT and bcrypt dependencies and configuration are in place |
-| Tooling        | ESLint, Prettier, npm workspaces, concurrent development   |
+| Layer          | Stack                                                     |
+| -------------- | --------------------------------------------------------- |
+| Frontend       | React, Vite, TypeScript, Tailwind CSS 4, React Router     |
+| Backend        | Node.js, Express, TypeScript                              |
+| Data           | PostgreSQL 18, Prisma ORM 6                               |
+| Authentication | bcrypt, JWT access tokens, rotating opaque refresh tokens |
+| Tooling        | ESLint, Prettier, npm workspaces, concurrent development  |
 
 ## Repository structure
 
@@ -19,10 +19,11 @@ Production-oriented Hospital Management System for the Algions AI Labs Full-Stac
 ├── backend/                 Express API and Prisma data layer
 │   ├── prisma/              Schema, migrations, and synthetic seed
 │   ├── scripts/             Database verification scripts
+│   ├── tests/               Authentication integration tests
 │   └── src/
 │       ├── config/          Environment, logger, and Prisma clients
-│       ├── middleware/      Request logging and centralized errors
-│       ├── modules/         Feature modules (health is the first module)
+│       ├── middleware/      Authentication, authorization, CSRF, and errors
+│       ├── modules/         Feature modules (health, auth, and access)
 │       ├── routes/          API route composition
 │       ├── services/        Reusable application services
 │       ├── types/           Backend-owned types
@@ -43,12 +44,13 @@ Production-oriented Hospital Management System for the Algions AI Labs Full-Stac
 │   │   └── utils/           Framework-independent utilities
 │   └── .env.example
 ├── docs/
+│   ├── api/                 Authentication and authorization contracts
 │   ├── architecture.md
 │   └── database/            ER diagram, data dictionary, constraints
 └── package.json             Workspace scripts
 ```
 
-The application architecture is documented in [docs/architecture.md](docs/architecture.md). The data layer is documented in the [ER diagram](docs/database/er-diagram.md), [data dictionary](docs/database/data-dictionary.md), and [relationships and constraints guide](docs/database/relationships-and-constraints.md).
+The application architecture is documented in [docs/architecture.md](docs/architecture.md). The authentication contract is documented in [docs/api/authentication.md](docs/api/authentication.md). The data layer is documented in the [ER diagram](docs/database/er-diagram.md), [data dictionary](docs/database/data-dictionary.md), and [relationships and constraints guide](docs/database/relationships-and-constraints.md).
 
 ## Prerequisites
 
@@ -129,20 +131,24 @@ The root `package.json` pins patched transitive versions of `deepmerge-ts` and `
 
 ### Backend
 
-| Variable                 | Required | Purpose                                                                                                                      |
-| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`               | No       | `development`, `test`, or `production`                                                                                       |
-| `PORT`                   | No       | API port, defaults to `4000`                                                                                                 |
-| `DATABASE_URL`           | Yes      | PostgreSQL connection string                                                                                                 |
-| `CORS_ORIGIN`            | Yes      | Comma-separated list of allowed browser origins                                                                              |
-| `JWT_ACCESS_SECRET`      | Yes      | Access-token signing secret, minimum 32 characters                                                                           |
-| `JWT_REFRESH_SECRET`     | Yes      | Refresh-token signing secret, minimum 32 characters                                                                          |
-| `JWT_ACCESS_EXPIRES_IN`  | No       | Access-token lifetime, defaults to `15m`                                                                                     |
-| `JWT_REFRESH_EXPIRES_IN` | No       | Refresh-token lifetime, defaults to `7d`                                                                                     |
-| `BCRYPT_SALT_ROUNDS`     | No       | bcrypt cost factor, defaults to `12`                                                                                         |
-| `LOG_LEVEL`              | No       | Pino log level, defaults to `info`                                                                                           |
-| `SEED_DEFAULT_PASSWORD`  | No       | Shared password for synthetic seed users; minimum 12 characters. If omitted, a random password is generated and printed once |
-| `SEED_ALLOW_PRODUCTION`  | No       | Must be `true` to permit `db:seed` when `NODE_ENV=production`                                                                |
+| Variable                            | Required | Purpose                                                                                                                      |
+| ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                          | No       | `development`, `test`, or `production`                                                                                       |
+| `PORT`                              | No       | API port, defaults to `4000`                                                                                                 |
+| `DATABASE_URL`                      | Yes      | PostgreSQL connection string                                                                                                 |
+| `CORS_ORIGIN`                       | Yes      | Comma-separated list of allowed browser origins                                                                              |
+| `JWT_ACCESS_SECRET`                 | Yes      | Access-token signing secret, minimum 32 characters                                                                           |
+| `JWT_REFRESH_SECRET`                | Yes      | Refresh-token signing secret, minimum 32 characters                                                                          |
+| `JWT_ACCESS_EXPIRES_IN`             | No       | Access-token lifetime, defaults to `15m`                                                                                     |
+| `JWT_REFRESH_EXPIRES_IN`            | No       | Refresh-token lifetime, defaults to `7d`                                                                                     |
+| `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS`   | No       | Failed-login rate-limit window, defaults to `900000` (15 minutes)                                                            |
+| `AUTH_LOGIN_RATE_LIMIT_MAX`         | No       | Failed logins allowed per IP and email in the window, defaults to `10`                                                       |
+| `AUTH_REFRESH_RATE_LIMIT_WINDOW_MS` | No       | Refresh/logout rate-limit window, defaults to `900000`                                                                       |
+| `AUTH_REFRESH_RATE_LIMIT_MAX`       | No       | Refresh/logout requests allowed per IP in the window, defaults to `60`                                                       |
+| `BCRYPT_SALT_ROUNDS`                | No       | bcrypt cost factor, defaults to `12`                                                                                         |
+| `LOG_LEVEL`                         | No       | Pino log level, defaults to `info`                                                                                           |
+| `SEED_DEFAULT_PASSWORD`             | No       | Shared password for synthetic seed users; minimum 12 characters. If omitted, a random password is generated and printed once |
+| `SEED_ALLOW_PRODUCTION`             | No       | Must be `true` to permit `db:seed` when `NODE_ENV=production`                                                                |
 
 The API validates its environment at startup and exits with a readable error when configuration is invalid.
 
@@ -169,6 +175,7 @@ All commands are available from the repository root.
 | `npm run typecheck`        | Type-check both workspaces                                               |
 | `npm run lint`             | Lint both workspaces                                                     |
 | `npm run lint:fix`         | Apply safe lint fixes                                                    |
+| `npm test`                 | Run the backend authentication integration tests                         |
 | `npm run format`           | Format the repository with Prettier                                      |
 | `npm run format:check`     | Verify formatting without writing files                                  |
 | `npm run verify`           | Run typecheck, lint, and production builds                               |
@@ -185,14 +192,14 @@ All commands are available from the repository root.
 
 ## Database architecture
 
-The Prisma schema contains 16 models:
+The Prisma schema contains 17 models:
 
 - **Identity and master data:** `User`, `Patient`, `Department`, `Doctor`, `Staff`
 - **Scheduling:** `DoctorSchedule`, `Appointment`
 - **Clinical encounter:** `Visit`, `Prescription`, `PrescriptionItem`,
   `DiagnosticReport`
 - **Revenue cycle:** `Invoice`, `InvoiceItem`, `Payment`
-- **Cross-cutting control:** `AuditLog`, `IdempotencyKey`
+- **Cross-cutting control:** `AuditLog`, `IdempotencyKey`, `RefreshToken`
 
 Key invariants are enforced in PostgreSQL, not only in application code:
 
@@ -200,8 +207,8 @@ Key invariants are enforced in PostgreSQL, not only in application code:
 - A `btree_gist` exclusion constraint prevents overlapping active appointments for the
   same doctor. Cancelled, completed, and no-show appointments do not block a slot.
 - CHECK constraints enforce time ordering, completed-state timestamps, nonnegative vitals
-  and fees, invoice arithmetic, line totals, positive payment amounts, and idempotency-key
-  expiry and response status.
+  and fees, invoice arithmetic, line totals, positive payment amounts, idempotency-key
+  expiry and response status, and refresh-token expiry/revocation invariants.
 - Clinical records attach to `Visit`; each visit has at most one invoice.
 - Historical patient, doctor, and financial parents are protected with `Restrict` delete
   policies. Only owned child rows cascade.
@@ -245,6 +252,12 @@ Production seeding is refused unless `SEED_ALLOW_PRODUCTION=true` is explicitly 
 
 This is a liveness endpoint only. It does not expose database state or sensitive configuration.
 
+### Authentication and authorization
+
+The API exposes login, refresh, logout, current-session, and password-change endpoints under `/api/auth`. Access tokens are short-lived Bearer JWTs. Rotating refresh tokens and a readable CSRF token are stored in scoped cookies; refresh and logout require the `X-CSRF-Token` header. Protected proof endpoints enforce both role permissions and resource ownership, including clinician-only access to assigned patients and doctor schedules.
+
+See [docs/api/authentication.md](docs/api/authentication.md) for request/response contracts, cookie behavior, RBAC, resource-scoping rules, and error codes.
+
 ## Deployment notes
 
 Build both workspaces with `npm run build`, serve `frontend/dist` as static assets, and reverse-proxy `/api` to the backend. Alternatively, set `VITE_API_BASE_URL` at build time and allow the frontend origin through `CORS_ORIGIN`. Run `npm run db:deploy` before starting the API. The synthetic seed is development data and must not be loaded into production unless an operator deliberately enables it.
@@ -259,30 +272,45 @@ Build both workspaces with `npm run build`, serve `frontend/dist` as static asse
 - Seed users receive bcrypt password hashes; seed passwords come from an environment
   variable or a generated value and are never hardcoded.
 - JWT secrets and token lifetimes are validated configuration.
+- Passwords use bcrypt; refresh tokens are stored only as HMAC-SHA-256 hashes.
+- Access tokens are verified against the current user, account status, role, and auth
+  version on every protected request.
+- Refresh tokens rotate on use; reuse revokes the token family, and password changes
+  revoke all active sessions.
+- The refresh cookie is HTTP-only and scoped to `/api/auth`; the readable CSRF cookie is
+  scoped to `/` so SPA code can read it. Cookies are `Secure` in production.
+- CSRF double-submit protection is required for refresh and logout.
+- Login and refresh endpoints are rate-limited.
+- Authentication events are audited without recording passwords or raw tokens.
 - Request logs redact authorization, cookie, and set-cookie headers.
 - Error responses omit stack traces and internal details.
 - No credentials or secret values are hardcoded.
 
 ## Current scope
 
-The database and appointment domain service are implemented. The HTTP API still exposes
-only the health endpoint plus centralized not-found and error handling; patient,
-appointment, billing, authentication, and authorization routes are deferred to the next
-phase. The frontend remains the initialized application shell. No fake or placeholder
-business APIs have been created.
+The database, appointment domain service, authentication, role-based authorization, and
+resource-scoped proof APIs are implemented. The HTTP API exposes health, auth, admin-user,
+patient, clinical-summary, appointment, doctor-schedule, and invoice-read endpoints. The
+frontend remains the initialized application shell. Business workflow UI, mutation APIs for
+appointments and billing, and broader hospital operations remain deferred.
 
 ## Verification
 
 ```bash
 npm run format:check
 npm run verify
+npm test
 npm run db:verify
 npm audit
 ```
 
 `npm run verify` runs TypeScript checks, ESLint, and production builds for both workspaces.
+`npm test` runs the backend integration suite against the configured test database. It
+creates isolated `authtest-` fixtures, exercises authentication, CSRF, refresh rotation and
+reuse detection, logout, password changes, RBAC, clinician resource scoping, rate limiting,
+and audit logging, then removes its data.
 `npm run db:verify` requires a running, migrated, and seeded database with the backend
-environment configured. It validates migrations, all 16 tables, 27 custom constraints,
+environment configured. It validates migrations, all 17 tables, 30 custom constraints,
 case-insensitive email uniqueness, referential integrity, the appointment exclusion
 constraint, representative CHECK failures, and the idempotent booking/reschedule/cancel
 transaction flow. Verification data is removed in a `finally` block.

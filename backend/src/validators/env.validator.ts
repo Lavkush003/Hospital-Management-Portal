@@ -32,6 +32,20 @@ export const envSchema = z
     JWT_ACCESS_EXPIRES_IN: jwtExpirySchema.default('15m'),
     JWT_REFRESH_EXPIRES_IN: jwtExpirySchema.default('7d'),
     BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
+    AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(86_400_000)
+      .default(15 * 60_000),
+    AUTH_LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1_000).default(10),
+    AUTH_REFRESH_RATE_LIMIT_WINDOW_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(86_400_000)
+      .default(15 * 60_000),
+    AUTH_REFRESH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(10_000).default(60),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),

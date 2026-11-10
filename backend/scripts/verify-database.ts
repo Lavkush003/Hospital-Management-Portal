@@ -33,6 +33,7 @@ const EXPECTED_MODEL_TABLES = [
   'Payment',
   'AuditLog',
   'IdempotencyKey',
+  'RefreshToken',
 ];
 
 const EXPECTED_CONSTRAINTS = [
@@ -63,6 +64,9 @@ const EXPECTED_CONSTRAINTS = [
   'Payment_completed_requires_date_check',
   'IdempotencyKey_expiry_check',
   'IdempotencyKey_response_status_check',
+  'RefreshToken_expiry_check',
+  'RefreshToken_revocation_time_check',
+  'RefreshToken_no_self_replacement_check',
 ];
 
 const EXPECTED_LOWER_EMAIL_INDEXES = [
@@ -183,7 +187,7 @@ async function checkServerAndMigrations(): Promise<CheckResult> {
     ORDER BY started_at
   `;
 
-  assert.equal(migrations.length, 2, 'Expected exactly two Prisma migrations');
+  assert.equal(migrations.length, 3, 'Expected exactly three Prisma migrations');
   assert.ok(
     migrations.every(
       (migration) => migration.finished_at !== null && migration.rolled_back_at === null,
@@ -296,7 +300,7 @@ async function checkSeedData(): Promise<CheckResult> {
 
   return {
     name: 'Seed data and all model relationships',
-    details: '16 models populated through valid foreign keys',
+    details: '16 seeded models populated through valid foreign keys; auth sessions are not seeded',
   };
 }
 

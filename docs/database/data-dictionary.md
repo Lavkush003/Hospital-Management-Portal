@@ -51,19 +51,21 @@ All monetary values use `numeric(12,2)`. All application timestamps use
 Stores authentication identities and role assignments. A user may be linked to at most one
 doctor profile and at most one staff profile.
 
-| Field          | Database type    | Attributes / default | Description                                                  |
-| -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
-| `id`           | `text`           | PK, `cuid()`         | Primary identifier                                           |
-| `email`        | `varchar(320)`   | UQ, lower-email UQ   | Login email; stored as entered but unique case-insensitively |
-| `passwordHash` | `varchar(255)`   | Required             | bcrypt password hash; never returned by APIs                 |
-| `role`         | `UserRole`       | Required             | Authorization role                                           |
-| `status`       | `UserStatus`     | Default `ACTIVE`     | Account lifecycle status                                     |
-| `firstName`    | `varchar(100)`   | Required             | Given name                                                   |
-| `lastName`     | `varchar(100)`   | Required             | Family name                                                  |
-| `phone`        | `varchar(32)`    | Nullable             | Contact telephone number                                     |
-| `lastLoginAt`  | `timestamptz(3)` | Nullable             | Most recent successful login                                 |
-| `createdAt`    | `timestamptz(3)` | Default `now()`      | Creation timestamp                                           |
-| `updatedAt`    | `timestamptz(3)` | `@updatedAt`         | Last update timestamp                                        |
+| Field               | Database type    | Attributes / default | Description                                                  |
+| ------------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
+| `id`                | `text`           | PK, `cuid()`         | Primary identifier                                           |
+| `email`             | `varchar(320)`   | UQ, lower-email UQ   | Login email; stored as entered but unique case-insensitively |
+| `passwordHash`      | `varchar(255)`   | Required             | bcrypt password hash; never returned by APIs                 |
+| `role`              | `UserRole`       | Required             | Authorization role                                           |
+| `status`            | `UserStatus`     | Default `ACTIVE`     | Account lifecycle status                                     |
+| `firstName`         | `varchar(100)`   | Required             | Given name                                                   |
+| `lastName`          | `varchar(100)`   | Required             | Family name                                                  |
+| `phone`             | `varchar(32)`    | Nullable             | Contact telephone number                                     |
+| `lastLoginAt`       | `timestamptz(3)` | Nullable             | Most recent successful login                                 |
+| `authVersion`       | `integer`        | Default `0`          | Incremented to invalidate previously issued access tokens    |
+| `passwordChangedAt` | `timestamptz(3)` | Nullable             | Most recent password change                                  |
+| `createdAt`         | `timestamptz(3)` | Default `now()`      | Creation timestamp                                           |
+| `updatedAt`         | `timestamptz(3)` | `@updatedAt`         | Last update timestamp                                        |
 
 Indexes: `(role, status)`, `(lastName, firstName)`. Unique exact email plus unique
 `lower(email)`.
@@ -432,3 +434,29 @@ business mutation and this record because they share one transaction.
 Unique: `(actorUserId, scope, key)`. Indexes: `(expiresAt)`, `(status, expiresAt)`,
 `(resourceType, resourceId)`.
 CHECKs: `IdempotencyKey_expiry_check`, `IdempotencyKey_response_status_check`.
+
+## RefreshToken
+
+Stores hashed opaque refresh tokens for rotation, revocation, and reuse detection. Tokens
+that descend from one login share a `familyId`. The raw token is returned only in an
+HTTP-only cookie and is never stored in the database.
+
+| Field               | Database type    | Attributes / default | Description                                       |
+| ------------------- | ---------------- | -------------------- | ------------------------------------------------- |
+| `id`                | `text`           | PK, `cuid()`         | Primary identifier                                |
+| `userId`            | `text`           | FK                   | Token owner                                       |
+| `tokenHash`         | `varchar(64)`    | UQ                   | HMAC-SHA-256 hash of the opaque token             |
+| `familyId`          | `varchar(64)`    | Required             | Rotation family shared by descendant tokens       |
+| `expiresAt`         | `timestamptz(3)` | Required             | Expiry timestamp                                  |
+| `revokedAt`         | `timestamptz(3)` | Nullable             | Revocation timestamp                              |
+| `revokedReason`     | `varchar(100)`   | Nullable             | `ROTATED`, `LOGOUT`, `REUSE_DETECTED`, and others |
+| `replacedByTokenId` | `text`           | UQ, FK, nullable     | Next token created during rotation                |
+| `ipAddress`         | `varchar(45)`    | Nullable             | IP address that created the token                 |
+| `userAgent`         | `varchar(500)`   | Nullable             | User agent that created the token                 |
+| `createdAt`         | `timestamptz(3)` | Default `now()`      | Creation timestamp                                |
+| `updatedAt`         | `timestamptz(3)` | `@updatedAt`         | Last update timestamp                             |
+
+Indexes: unique `(tokenHash)`, unique `(replacedByTokenId)`, `(userId, familyId)`,
+`(familyId)`, `(expiresAt)`, `(revokedAt, expiresAt)`.
+CHECKs: `RefreshToken_expiry_check`, `RefreshToken_revocation_time_check`,
+`RefreshToken_no_self_replacement_check`.
