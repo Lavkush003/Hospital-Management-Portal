@@ -135,7 +135,11 @@ The frontend validates its public environment with Zod in `src/utils/env.ts`. Fr
 
 Prisma reads `DATABASE_URL` from the backend environment. The client is created once and reused, with a development singleton guard to avoid duplicate clients during hot reload. The client is disconnected during graceful shutdown.
 
-The schema contains the PostgreSQL datasource and Prisma client generator. Domain models and migrations will be introduced with the corresponding business modules. No fake tables or APIs have been added in this foundational phase.
+The schema now defines 16 domain models, 17 enums, and committed migrations. PostgreSQL enforces the critical invariants through a `btree_gist` appointment exclusion constraint, case-insensitive email indexes, and 27 CHECK constraints. Synthetic development data is loaded through `backend/prisma/seed.ts`.
+
+The appointment domain service is implemented without exposing HTTP routes yet. It performs idempotent booking, rescheduling, and cancellation in transactions, writes audit records, locks appointment rows for state changes, and maps database exclusion violations to application conflicts.
+
+The complete data-layer specification is maintained in the [ER diagram](database/er-diagram.md), [data dictionary](database/data-dictionary.md), and [relationships and constraints guide](database/relationships-and-constraints.md).
 
 ### Security
 
@@ -161,6 +165,14 @@ npm run verify
 
 It requires successful TypeScript compilation, ESLint, and production builds for both workspaces. The health endpoint can be checked at `http://localhost:4000/api/health` while the development server is running.
 
+The database gate is:
+
+```bash
+npm run db:verify
+```
+
+It requires a running, migrated, and seeded PostgreSQL database plus a valid backend environment. It checks migrations, tables, indexes, custom constraints, seed relationships, exclusion behavior, CHECK enforcement, and idempotent appointment transactions.
+
 ## Scope boundary
 
-This phase delivers infrastructure, not domain behavior. Authentication endpoints, hospital domain models, role authorization, and business workflows are deliberately deferred. The architecture is ready for those modules without introducing new deployables or changing the overall request lifecycle.
+The foundation and data architecture are complete, including the appointment domain service. Authentication routes, role-based authorization, patient/appointment/billing HTTP endpoints, and the hospital user interface remain deferred. The architecture is ready for those modules without introducing new deployables or changing the overall request lifecycle.

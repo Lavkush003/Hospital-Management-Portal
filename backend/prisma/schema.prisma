@@ -6,3 +6,510 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum UserRole {
+  ADMIN
+  FRONT_DESK
+  CLINICIAN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+  UNKNOWN
+}
+
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+  DECEASED
+}
+
+enum DoctorStatus {
+  ACTIVE
+  ON_LEAVE
+  INACTIVE
+}
+
+enum StaffStatus {
+  ACTIVE
+  ON_LEAVE
+  INACTIVE
+  TERMINATED
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum VisitStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PrescriptionStatus {
+  ISSUED
+  DISPENSED
+  CANCELLED
+}
+
+enum DiagnosticReportType {
+  LABORATORY
+  IMAGING
+  PATHOLOGY
+  OTHER
+}
+
+enum DiagnosticReportStatus {
+  ORDERED
+  COLLECTED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  MOBILE_MONEY
+  INSURANCE
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum IdempotencyStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique @db.VarChar(320)
+  passwordHash String     @db.VarChar(255)
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  firstName    String     @db.VarChar(100)
+  lastName     String     @db.VarChar(100)
+  phone        String?    @db.VarChar(32)
+  lastLoginAt  DateTime?  @db.Timestamptz(3)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(3)
+
+  doctor                  Doctor?
+  staff                   Staff?
+  auditLogs               AuditLog[]       @relation("AuditActor")
+  createdAppointments     Appointment[]    @relation("AppointmentCreatedBy")
+  cancelledAppointments   Appointment[]    @relation("AppointmentCancelledBy")
+  rescheduledAppointments Appointment[]    @relation("AppointmentRescheduledBy")
+  receivedPayments        Payment[]        @relation("PaymentReceivedBy")
+  idempotencyKeys         IdempotencyKey[]
+
+  @@index([role, status])
+  @@index([lastName, firstName])
+}
+
+model Patient {
+  id                    String        @id @default(cuid())
+  patientNumber         String        @unique @db.VarChar(32)
+  firstName             String        @db.VarChar(100)
+  lastName              String        @db.VarChar(100)
+  dateOfBirth           DateTime      @db.Date
+  gender                Gender        @default(UNKNOWN)
+  bloodGroup            BloodGroup    @default(UNKNOWN)
+  phone                 String?       @db.VarChar(32)
+  email                 String?       @db.VarChar(320)
+  addressLine1          String?       @db.VarChar(200)
+  addressLine2          String?       @db.VarChar(200)
+  city                  String?       @db.VarChar(100)
+  state                 String?       @db.VarChar(100)
+  postalCode            String?       @db.VarChar(20)
+  country               String?       @db.VarChar(100)
+  emergencyContactName  String?       @db.VarChar(200)
+  emergencyContactPhone String?       @db.VarChar(32)
+  allergies             String?       @db.Text
+  notes                 String?       @db.Text
+  status                PatientStatus @default(ACTIVE)
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+
+  appointments Appointment[]
+  visits       Visit[]
+
+  @@index([lastName, firstName])
+  @@index([phone])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  code        String   @unique @db.VarChar(20)
+  name        String   @unique @db.VarChar(120)
+  description String?  @db.Text
+  location    String?  @db.VarChar(160)
+  phone       String?  @db.VarChar(32)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  doctors Doctor[]
+  staff   Staff[]
+
+  @@index([isActive])
+}
+
+model Doctor {
+  id              String       @id @default(cuid())
+  userId          String       @unique
+  employeeCode    String       @unique @db.VarChar(32)
+  departmentId    String
+  firstName       String       @db.VarChar(100)
+  lastName        String       @db.VarChar(100)
+  email           String       @unique @db.VarChar(320)
+  phone           String?      @db.VarChar(32)
+  licenseNumber   String       @unique @db.VarChar(64)
+  specialization  String       @db.VarChar(120)
+  qualifications  String?      @db.Text
+  consultationFee Decimal      @default(0) @db.Decimal(12, 2)
+  status          DoctorStatus @default(ACTIVE)
+  bio             String?      @db.Text
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department   Department       @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  schedules    DoctorSchedule[]
+  appointments Appointment[]
+  visits       Visit[]
+
+  @@index([departmentId, status])
+  @@index([lastName, firstName])
+  @@index([specialization])
+}
+
+model Staff {
+  id           String      @id @default(cuid())
+  userId       String      @unique
+  employeeCode String      @unique @db.VarChar(32)
+  departmentId String?
+  firstName    String      @db.VarChar(100)
+  lastName     String      @db.VarChar(100)
+  email        String      @unique @db.VarChar(320)
+  phone        String?     @db.VarChar(32)
+  jobTitle     String      @db.VarChar(120)
+  status       StaffStatus @default(ACTIVE)
+  hiredAt      DateTime?   @db.Date
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(3)
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@index([departmentId, status])
+  @@index([lastName, firstName])
+}
+
+model DoctorSchedule {
+  id                  String    @id @default(cuid())
+  doctorId            String
+  dayOfWeek           DayOfWeek
+  startTime           DateTime  @db.Time(0)
+  endTime             DateTime  @db.Time(0)
+  slotDurationMinutes Int       @default(30)
+  room                String?   @db.VarChar(50)
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, dayOfWeek, startTime])
+  @@index([doctorId, dayOfWeek, isActive])
+}
+
+model Appointment {
+  id                 String            @id @default(cuid())
+  appointmentNumber  String            @unique @db.VarChar(32)
+  patientId          String
+  doctorId           String
+  scheduledStart     DateTime          @db.Timestamptz(3)
+  scheduledEnd       DateTime          @db.Timestamptz(3)
+  status             AppointmentStatus @default(SCHEDULED)
+  reason             String?           @db.Text
+  notes              String?           @db.Text
+  createdById        String?
+  cancelledById      String?
+  cancelledAt        DateTime?         @db.Timestamptz(3)
+  cancellationReason String?           @db.Text
+  rescheduledById    String?
+  rescheduledAt      DateTime?         @db.Timestamptz(3)
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
+
+  patient       Patient @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor        Doctor  @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  createdBy     User?   @relation("AppointmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  cancelledBy   User?   @relation("AppointmentCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  rescheduledBy User?   @relation("AppointmentRescheduledBy", fields: [rescheduledById], references: [id], onDelete: SetNull)
+  visit         Visit?
+
+  @@index([doctorId, scheduledStart, scheduledEnd])
+  @@index([patientId, scheduledStart])
+  @@index([status, scheduledStart])
+  @@index([scheduledStart])
+  @@index([createdById])
+  @@index([cancelledById, cancelledAt])
+}
+
+model Visit {
+  id               String      @id @default(cuid())
+  visitNumber      String      @unique @db.VarChar(32)
+  appointmentId    String?     @unique
+  patientId        String
+  doctorId         String
+  status           VisitStatus @default(PLANNED)
+  chiefComplaint   String?     @db.Text
+  diagnosis        String?     @db.Text
+  clinicalNotes    String?     @db.Text
+  heightCm         Decimal?    @db.Decimal(5, 2)
+  weightKg         Decimal?    @db.Decimal(5, 2)
+  temperatureC     Decimal?    @db.Decimal(4, 1)
+  systolicBp       Int?
+  diastolicBp      Int?
+  heartRate        Int?
+  respiratoryRate  Int?
+  oxygenSaturation Int?
+  startedAt        DateTime    @default(now()) @db.Timestamptz(3)
+  endedAt          DateTime?   @db.Timestamptz(3)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+
+  appointment       Appointment?       @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  patient           Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor            Doctor             @relation(fields: [doctorId], references: [id], onDelete: Restrict)
+  prescriptions     Prescription[]
+  diagnosticReports DiagnosticReport[]
+  invoice           Invoice?
+
+  @@index([patientId, startedAt])
+  @@index([doctorId, startedAt])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model Prescription {
+  id                 String             @id @default(cuid())
+  prescriptionNumber String             @unique @db.VarChar(32)
+  visitId            String
+  status             PrescriptionStatus @default(ISSUED)
+  notes              String?            @db.Text
+  issuedAt           DateTime           @default(now()) @db.Timestamptz(3)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  visit Visit              @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  items PrescriptionItem[]
+
+  @@index([visitId, issuedAt])
+  @@index([status])
+  @@index([issuedAt])
+}
+
+model PrescriptionItem {
+  id             String   @id @default(cuid())
+  prescriptionId String
+  medicationName String   @db.VarChar(200)
+  dosage         String   @db.VarChar(100)
+  frequency      String   @db.VarChar(100)
+  durationDays   Int
+  quantity       Int
+  instructions   String?  @db.Text
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+}
+
+model DiagnosticReport {
+  id            String                 @id @default(cuid())
+  reportNumber  String                 @unique @db.VarChar(32)
+  visitId       String
+  type          DiagnosticReportType
+  status        DiagnosticReportStatus @default(ORDERED)
+  testName      String                 @db.VarChar(200)
+  resultSummary String?                @db.Text
+  resultDetails String?                @db.Text
+  orderedAt     DateTime               @default(now()) @db.Timestamptz(3)
+  completedAt   DateTime?              @db.Timestamptz(3)
+  createdAt     DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime               @updatedAt @db.Timestamptz(3)
+
+  visit Visit @relation(fields: [visitId], references: [id], onDelete: Restrict)
+
+  @@index([visitId, orderedAt])
+  @@index([status, orderedAt])
+  @@index([type])
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  invoiceNumber  String        @unique @db.VarChar(32)
+  visitId        String        @unique
+  status         InvoiceStatus @default(DRAFT)
+  currency       String        @default("USD") @db.VarChar(3)
+  subtotal       Decimal       @db.Decimal(12, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(12, 2)
+  taxAmount      Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount    Decimal       @db.Decimal(12, 2)
+  issuedAt       DateTime?     @db.Timestamptz(3)
+  dueAt          DateTime?     @db.Timestamptz(3)
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  visit    Visit         @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@index([status, issuedAt])
+  @@index([dueAt])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String   @db.VarChar(300)
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  lineTotal   Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  paymentNumber     String        @unique @db.VarChar(32)
+  invoiceId         String
+  amount            Decimal       @db.Decimal(12, 2)
+  method            PaymentMethod
+  status            PaymentStatus @default(PENDING)
+  receivedById      String?
+  paidAt            DateTime?     @db.Timestamptz(3)
+  externalReference String?       @unique @db.VarChar(120)
+  notes             String?       @db.Text
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  receivedBy User?   @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId, status])
+  @@index([paidAt])
+  @@index([receivedById])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String   @db.VarChar(100)
+  entityType  String   @db.VarChar(100)
+  entityId    String   @db.VarChar(64)
+  before      Json?
+  after       Json?
+  metadata    Json?
+  ipAddress   String?  @db.VarChar(45)
+  userAgent   String?  @db.VarChar(500)
+  requestId   String?  @db.VarChar(100)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([createdAt])
+  @@index([requestId])
+}
+
+model IdempotencyKey {
+  id                 String            @id @default(cuid())
+  actorUserId        String
+  scope              String            @db.VarChar(100)
+  key                String            @db.VarChar(200)
+  requestHash        String            @db.VarChar(64)
+  status             IdempotencyStatus @default(PENDING)
+  resourceType       String?           @db.VarChar(100)
+  resourceId         String?           @db.VarChar(64)
+  responseStatusCode Int?
+  responseBody       Json?
+  expiresAt          DateTime          @db.Timestamptz(3)
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
+
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([actorUserId, scope, key])
+  @@index([expiresAt])
+  @@index([status, expiresAt])
+  @@index([resourceType, resourceId])
+}

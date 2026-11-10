@@ -1,6 +1,6 @@
 # Hospital Management System
 
-Production-oriented foundation for the Algions AI Labs Full-Stack Web Development assessment. This phase establishes a secure, typed, maintainable full-stack baseline without implementing hospital business features.
+Production-oriented Hospital Management System for the Algions AI Labs Full-Stack Web Development assessment. The current phase establishes the secure full-stack foundation and a complete PostgreSQL/Prisma data architecture. Business APIs and the hospital user interface remain intentionally deferred.
 
 ## Technology
 
@@ -8,7 +8,7 @@ Production-oriented foundation for the Algions AI Labs Full-Stack Web Developmen
 | -------------- | ---------------------------------------------------------- |
 | Frontend       | React, Vite, TypeScript, Tailwind CSS 4, React Router      |
 | Backend        | Node.js, Express, TypeScript                               |
-| Data           | PostgreSQL, Prisma ORM                                     |
+| Data           | PostgreSQL 18, Prisma ORM 6                                |
 | Authentication | JWT and bcrypt dependencies and configuration are in place |
 | Tooling        | ESLint, Prettier, npm workspaces, concurrent development   |
 
@@ -16,8 +16,9 @@ Production-oriented foundation for the Algions AI Labs Full-Stack Web Developmen
 
 ```text
 .
-├── backend/                 Express API and Prisma schema
-│   ├── prisma/
+├── backend/                 Express API and Prisma data layer
+│   ├── prisma/              Schema, migrations, and synthetic seed
+│   ├── scripts/             Database verification scripts
 │   └── src/
 │       ├── config/          Environment, logger, and Prisma clients
 │       ├── middleware/      Request logging and centralized errors
@@ -41,11 +42,13 @@ Production-oriented foundation for the Algions AI Labs Full-Stack Web Developmen
 │   │   ├── types/           Frontend-owned types
 │   │   └── utils/           Framework-independent utilities
 │   └── .env.example
-├── docs/architecture.md
+├── docs/
+│   ├── architecture.md
+│   └── database/            ER diagram, data dictionary, constraints
 └── package.json             Workspace scripts
 ```
 
-The detailed architecture is documented in [docs/architecture.md](docs/architecture.md).
+The application architecture is documented in [docs/architecture.md](docs/architecture.md). The data layer is documented in the [ER diagram](docs/database/er-diagram.md), [data dictionary](docs/database/data-dictionary.md), and [relationships and constraints guide](docs/database/relationships-and-constraints.md).
 
 ## Prerequisites
 
@@ -96,10 +99,21 @@ The detailed architecture is documented in [docs/architecture.md](docs/architect
    CREATE DATABASE hospital_management;
    ```
 
-5. Validate Prisma and start both applications:
+5. Validate the schema, apply migrations, and load synthetic data:
 
    ```bash
    npm run db:validate
+   npm run db:deploy
+   npm run db:seed
+   ```
+
+   Set `SEED_DEFAULT_PASSWORD` in `backend/.env` before seeding if you want deterministic
+   development credentials. Otherwise the seed generates a random password and prints it
+   once. All seeded accounts use synthetic `example.test` addresses.
+
+6. Start both applications:
+
+   ```bash
    npm run dev
    ```
 
@@ -115,18 +129,20 @@ The root `package.json` pins patched transitive versions of `deepmerge-ts` and `
 
 ### Backend
 
-| Variable                 | Required | Purpose                                             |
-| ------------------------ | -------- | --------------------------------------------------- |
-| `NODE_ENV`               | No       | `development`, `test`, or `production`              |
-| `PORT`                   | No       | API port, defaults to `4000`                        |
-| `DATABASE_URL`           | Yes      | PostgreSQL connection string                        |
-| `CORS_ORIGIN`            | Yes      | Comma-separated list of allowed browser origins     |
-| `JWT_ACCESS_SECRET`      | Yes      | Access-token signing secret, minimum 32 characters  |
-| `JWT_REFRESH_SECRET`     | Yes      | Refresh-token signing secret, minimum 32 characters |
-| `JWT_ACCESS_EXPIRES_IN`  | No       | Access-token lifetime, defaults to `15m`            |
-| `JWT_REFRESH_EXPIRES_IN` | No       | Refresh-token lifetime, defaults to `7d`            |
-| `BCRYPT_SALT_ROUNDS`     | No       | bcrypt cost factor, defaults to `12`                |
-| `LOG_LEVEL`              | No       | Pino log level, defaults to `info`                  |
+| Variable                 | Required | Purpose                                                                                                                      |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`               | No       | `development`, `test`, or `production`                                                                                       |
+| `PORT`                   | No       | API port, defaults to `4000`                                                                                                 |
+| `DATABASE_URL`           | Yes      | PostgreSQL connection string                                                                                                 |
+| `CORS_ORIGIN`            | Yes      | Comma-separated list of allowed browser origins                                                                              |
+| `JWT_ACCESS_SECRET`      | Yes      | Access-token signing secret, minimum 32 characters                                                                           |
+| `JWT_REFRESH_SECRET`     | Yes      | Refresh-token signing secret, minimum 32 characters                                                                          |
+| `JWT_ACCESS_EXPIRES_IN`  | No       | Access-token lifetime, defaults to `15m`                                                                                     |
+| `JWT_REFRESH_EXPIRES_IN` | No       | Refresh-token lifetime, defaults to `7d`                                                                                     |
+| `BCRYPT_SALT_ROUNDS`     | No       | bcrypt cost factor, defaults to `12`                                                                                         |
+| `LOG_LEVEL`              | No       | Pino log level, defaults to `info`                                                                                           |
+| `SEED_DEFAULT_PASSWORD`  | No       | Shared password for synthetic seed users; minimum 12 characters. If omitted, a random password is generated and printed once |
+| `SEED_ALLOW_PRODUCTION`  | No       | Must be `true` to permit `db:seed` when `NODE_ENV=production`                                                                |
 
 The API validates its environment at startup and exits with a readable error when configuration is invalid.
 
@@ -144,25 +160,74 @@ Only variables prefixed with `VITE_` are exposed to browser code. Never place se
 
 All commands are available from the repository root.
 
-| Command                    | Description                                          |
-| -------------------------- | ---------------------------------------------------- |
-| `npm run dev`              | Run the API and web app together                     |
-| `npm run dev:backend`      | Run only the API in watch mode                       |
-| `npm run dev:frontend`     | Run only the web app                                 |
-| `npm run build`            | Build the API and web app                            |
-| `npm run typecheck`        | Type-check both workspaces                           |
-| `npm run lint`             | Lint both workspaces                                 |
-| `npm run lint:fix`         | Apply safe lint fixes                                |
-| `npm run format`           | Format the repository with Prettier                  |
-| `npm run format:check`     | Verify formatting without writing files              |
-| `npm run verify`           | Run typecheck, lint, and production builds           |
-| `npm run db:generate`      | Generate the Prisma client                           |
-| `npm run db:validate`      | Validate the Prisma schema                           |
-| `npm run db:migrate`       | Create and apply a development migration             |
-| `npm run db:deploy`        | Apply committed migrations in a deployed environment |
-| `npm run db:studio`        | Open Prisma Studio                                   |
-| `npm run start:backend`    | Start the compiled API                               |
-| `npm run preview:frontend` | Preview the production frontend build                |
+| Command                    | Description                                                              |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `npm run dev`              | Run the API and web app together                                         |
+| `npm run dev:backend`      | Run only the API in watch mode                                           |
+| `npm run dev:frontend`     | Run only the web app                                                     |
+| `npm run build`            | Build the API and web app                                                |
+| `npm run typecheck`        | Type-check both workspaces                                               |
+| `npm run lint`             | Lint both workspaces                                                     |
+| `npm run lint:fix`         | Apply safe lint fixes                                                    |
+| `npm run format`           | Format the repository with Prettier                                      |
+| `npm run format:check`     | Verify formatting without writing files                                  |
+| `npm run verify`           | Run typecheck, lint, and production builds                               |
+| `npm run db:generate`      | Generate the Prisma client                                               |
+| `npm run db:validate`      | Validate the Prisma schema                                               |
+| `npm run db:migrate`       | Create and apply a development migration                                 |
+| `npm run db:deploy`        | Apply committed migrations without generating a new one                  |
+| `npm run db:seed`          | Load idempotent synthetic development data                               |
+| `npm run db:reset`         | Drop, recreate, migrate, and reseed the database                         |
+| `npm run db:verify`        | Run migrations, seed-count, constraint, relationship, and service checks |
+| `npm run db:studio`        | Open Prisma Studio                                                       |
+| `npm run start:backend`    | Start the compiled API                                                   |
+| `npm run preview:frontend` | Preview the production frontend build                                    |
+
+## Database architecture
+
+The Prisma schema contains 16 models:
+
+- **Identity and master data:** `User`, `Patient`, `Department`, `Doctor`, `Staff`
+- **Scheduling:** `DoctorSchedule`, `Appointment`
+- **Clinical encounter:** `Visit`, `Prescription`, `PrescriptionItem`,
+  `DiagnosticReport`
+- **Revenue cycle:** `Invoice`, `InvoiceItem`, `Payment`
+- **Cross-cutting control:** `AuditLog`, `IdempotencyKey`
+
+Key invariants are enforced in PostgreSQL, not only in application code:
+
+- Case-insensitive unique email addresses for users, doctors, and staff.
+- A `btree_gist` exclusion constraint prevents overlapping active appointments for the
+  same doctor. Cancelled, completed, and no-show appointments do not block a slot.
+- CHECK constraints enforce time ordering, completed-state timestamps, nonnegative vitals
+  and fees, invoice arithmetic, line totals, positive payment amounts, and idempotency-key
+  expiry and response status.
+- Clinical records attach to `Visit`; each visit has at most one invoice.
+- Historical patient, doctor, and financial parents are protected with `Restrict` delete
+  policies. Only owned child rows cascade.
+
+The appointment service in `backend/src/modules/appointments/appointment.service.ts`
+implements transactional booking, rescheduling, and cancellation. It combines audit
+logging with idempotency records and maps PostgreSQL exclusion violations to application
+conflict errors. The shared idempotency helper stores a canonical SHA-256 request hash and
+replays completed resource IDs for 24 hours.
+
+See the [ER diagram](docs/database/er-diagram.md),
+[data dictionary](docs/database/data-dictionary.md), and
+[relationships and constraints guide](docs/database/relationships-and-constraints.md) for
+the full model, field, index, and transaction specification.
+
+### Synthetic seed data
+
+The seed creates five departments, six users, six patients, three doctors, three staff
+members, weekly schedules, appointments in multiple states, encounters, prescriptions,
+diagnostic reports, invoices, payments, audit logs, and an idempotency record. It is safe
+to rerun: seed-owned rows are removed and recreated in a transaction.
+
+Seed accounts use `@example.test` emails such as `admin@example.test`,
+`frontdesk@example.test`, `evelyn.chen@example.test`, and `nurse@example.test`. Their
+password comes from `SEED_DEFAULT_PASSWORD` or the generated password printed by the seed.
+Production seeding is refused unless `SEED_ALLOW_PRODUCTION=true` is explicitly set.
 
 ## API
 
@@ -182,7 +247,7 @@ This is a liveness endpoint only. It does not expose database state or sensitive
 
 ## Deployment notes
 
-Build both workspaces with `npm run build`, serve `frontend/dist` as static assets, and reverse-proxy `/api` to the backend. Alternatively, set `VITE_API_BASE_URL` at build time and allow the frontend origin through `CORS_ORIGIN`. Run `npm run db:deploy` before starting the API once migrations exist.
+Build both workspaces with `npm run build`, serve `frontend/dist` as static assets, and reverse-proxy `/api` to the backend. Alternatively, set `VITE_API_BASE_URL` at build time and allow the frontend origin through `CORS_ORIGIN`. Run `npm run db:deploy` before starting the API. The synthetic seed is development data and must not be loaded into production unless an operator deliberately enables it.
 
 ## Security baseline
 
@@ -191,21 +256,37 @@ Build both workspaces with `npm run build`, serve `frontend/dist` as static asse
 - Helmet sets security headers.
 - CORS uses an explicit allowlist.
 - JSON request bodies are size-limited.
-- Passwords will use bcrypt; JWT secrets and token lifetimes are validated configuration.
+- Seed users receive bcrypt password hashes; seed passwords come from an environment
+  variable or a generated value and are never hardcoded.
+- JWT secrets and token lifetimes are validated configuration.
 - Request logs redact authorization, cookie, and set-cookie headers.
 - Error responses omit stack traces and internal details.
 - No credentials or secret values are hardcoded.
 
 ## Current scope
 
-This phase intentionally contains no patient, appointment, billing, or authentication endpoints. The Prisma schema is connected and validated but has no domain models yet. The API exposes only the health endpoint plus centralized not-found and error handling. The authentication libraries and environment configuration are ready for the next phase, but no fake or placeholder business APIs have been created.
+The database and appointment domain service are implemented. The HTTP API still exposes
+only the health endpoint plus centralized not-found and error handling; patient,
+appointment, billing, authentication, and authorization routes are deferred to the next
+phase. The frontend remains the initialized application shell. No fake or placeholder
+business APIs have been created.
 
 ## Verification
 
 ```bash
 npm run format:check
 npm run verify
+npm run db:verify
 npm audit
 ```
 
-`npm run verify` runs TypeScript checks, ESLint, and production builds for both workspaces. The health endpoint was also smoke-tested at runtime, including security headers, CORS allowlisting, request correlation, 404 handling, invalid-JSON handling, and CORS preflight responses.
+`npm run verify` runs TypeScript checks, ESLint, and production builds for both workspaces.
+`npm run db:verify` requires a running, migrated, and seeded database with the backend
+environment configured. It validates migrations, all 16 tables, 27 custom constraints,
+case-insensitive email uniqueness, referential integrity, the appointment exclusion
+constraint, representative CHECK failures, and the idempotent booking/reschedule/cancel
+transaction flow. Verification data is removed in a `finally` block.
+
+The foundation health endpoint has also been smoke-tested at runtime, including security
+headers, CORS allowlisting, request correlation, 404 handling, invalid-JSON handling, and
+CORS preflight responses.
