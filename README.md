@@ -1,6 +1,6 @@
 # Hospital Management System
 
-Production-oriented Hospital Management System for the Algions AI Labs Full-Stack Web Development assessment. The current phase establishes the secure full-stack foundation, a complete PostgreSQL/Prisma data architecture, authentication, role-based authorization, and resource-scoped proof APIs. The hospital business user interface remains intentionally deferred.
+Production-oriented Hospital Management System for the Algions AI Labs Full-Stack Web Development assessment. The backend implements a complete PostgreSQL/Prisma data architecture, authentication, role-based authorization, patient/doctor/department/staff management, scheduling and availability, and appointment booking. The hospital business user interface remains intentionally deferred.
 
 ## Technology
 
@@ -19,11 +19,11 @@ Production-oriented Hospital Management System for the Algions AI Labs Full-Stac
 ├── backend/                 Express API and Prisma data layer
 │   ├── prisma/              Schema, migrations, and synthetic seed
 │   ├── scripts/             Database verification scripts
-│   ├── tests/               Authentication integration tests
+│   ├── tests/               Authentication and management integration tests
 │   └── src/
 │       ├── config/          Environment, logger, and Prisma clients
 │       ├── middleware/      Authentication, authorization, CSRF, and errors
-│       ├── modules/         Feature modules (health, auth, and access)
+│       ├── modules/         Health, auth, patients, doctors, departments, staff, schedules, appointments, and access
 │       ├── routes/          API route composition
 │       ├── services/        Reusable application services
 │       ├── types/           Backend-owned types
@@ -50,7 +50,7 @@ Production-oriented Hospital Management System for the Algions AI Labs Full-Stac
 └── package.json             Workspace scripts
 ```
 
-The application architecture is documented in [docs/architecture.md](docs/architecture.md). The authentication contract is documented in [docs/api/authentication.md](docs/api/authentication.md). The data layer is documented in the [ER diagram](docs/database/er-diagram.md), [data dictionary](docs/database/data-dictionary.md), and [relationships and constraints guide](docs/database/relationships-and-constraints.md).
+The application architecture is documented in [docs/architecture.md](docs/architecture.md). The authentication contract is documented in [docs/api/authentication.md](docs/api/authentication.md), and the management APIs are documented in [docs/api/management.md](docs/api/management.md). The data layer is documented in the [ER diagram](docs/database/er-diagram.md), [data dictionary](docs/database/data-dictionary.md), and [relationships and constraints guide](docs/database/relationships-and-constraints.md).
 
 ## Prerequisites
 
@@ -175,7 +175,7 @@ All commands are available from the repository root.
 | `npm run typecheck`        | Type-check both workspaces                                               |
 | `npm run lint`             | Lint both workspaces                                                     |
 | `npm run lint:fix`         | Apply safe lint fixes                                                    |
-| `npm test`                 | Run the backend authentication integration tests                         |
+| `npm test`                 | Run the backend authentication and management integration tests          |
 | `npm run format`           | Format the repository with Prettier                                      |
 | `npm run format:check`     | Verify formatting without writing files                                  |
 | `npm run verify`           | Run typecheck, lint, and production builds                               |
@@ -192,10 +192,11 @@ All commands are available from the repository root.
 
 ## Database architecture
 
-The Prisma schema contains 17 models:
+The Prisma schema contains 20 models:
 
 - **Identity and master data:** `User`, `Patient`, `Department`, `Doctor`, `Staff`
-- **Scheduling:** `DoctorSchedule`, `Appointment`
+- **Scheduling:** `DoctorSchedule`, `DoctorScheduleBreak`, `DoctorLeave`,
+  `DoctorUnavailability`, `Appointment`
 - **Clinical encounter:** `Visit`, `Prescription`, `PrescriptionItem`,
   `DiagnosticReport`
 - **Revenue cycle:** `Invoice`, `InvoiceItem`, `Payment`
@@ -207,17 +208,21 @@ Key invariants are enforced in PostgreSQL, not only in application code:
 - A `btree_gist` exclusion constraint prevents overlapping active appointments for the
   same doctor. Cancelled, completed, and no-show appointments do not block a slot.
 - CHECK constraints enforce time ordering, completed-state timestamps, nonnegative vitals
-  and fees, invoice arithmetic, line totals, positive payment amounts, idempotency-key
-  expiry and response status, and refresh-token expiry/revocation invariants.
+  and fees, invoice arithmetic, line totals, positive payment amounts, schedule break and
+  leave time ordering, idempotency-key expiry and response status, and refresh-token
+  expiry/revocation invariants.
 - Clinical records attach to `Visit`; each visit has at most one invoice.
 - Historical patient, doctor, and financial parents are protected with `Restrict` delete
   policies. Only owned child rows cascade.
 
 The appointment service in `backend/src/modules/appointments/appointment.service.ts`
-implements transactional booking, rescheduling, and cancellation. It combines audit
-logging with idempotency records and maps PostgreSQL exclusion violations to application
-conflict errors. The shared idempotency helper stores a canonical SHA-256 request hash and
-replays completed resource IDs for 24 hours.
+implements transactional booking, rescheduling, cancellation, status changes, and filtered
+listing. The availability service derives exact schedule-aligned slots by excluding breaks,
+leave, unavailability, and active appointments. Booking and schedule mutations lock the
+doctor row with `SELECT ... FOR UPDATE`, and the database exclusion constraint remains the
+final concurrency guard. Mutations combine audit logging with idempotency records; the shared
+helper stores a canonical SHA-256 request hash and replays completed resource IDs for 24
+hours.
 
 See the [ER diagram](docs/database/er-diagram.md),
 [data dictionary](docs/database/data-dictionary.md), and
@@ -227,9 +232,10 @@ the full model, field, index, and transaction specification.
 ### Synthetic seed data
 
 The seed creates five departments, six users, six patients, three doctors, three staff
-members, weekly schedules, appointments in multiple states, encounters, prescriptions,
-diagnostic reports, invoices, payments, audit logs, and an idempotency record. It is safe
-to rerun: seed-owned rows are removed and recreated in a transaction.
+members, weekly schedules with breaks, doctor leave and unavailability records, appointments
+in multiple states, encounters, prescriptions, diagnostic reports, invoices, payments, audit
+logs, and an idempotency record. It is safe to rerun: seed-owned rows are removed and
+recreated in a transaction.
 
 Seed accounts use `@example.test` emails such as `admin@example.test`,
 `frontdesk@example.test`, `evelyn.chen@example.test`, and `nurse@example.test`. Their
@@ -254,9 +260,11 @@ This is a liveness endpoint only. It does not expose database state or sensitive
 
 ### Authentication and authorization
 
-The API exposes login, refresh, logout, current-session, and password-change endpoints under `/api/auth`. Access tokens are short-lived Bearer JWTs. Rotating refresh tokens and a readable CSRF token are stored in scoped cookies; refresh and logout require the `X-CSRF-Token` header. Protected proof endpoints enforce both role permissions and resource ownership, including clinician-only access to assigned patients and doctor schedules.
+The API exposes login, refresh, logout, current-session, and password-change endpoints under `/api/auth`. Access tokens are short-lived Bearer JWTs. Rotating refresh tokens and a readable CSRF token are stored in scoped cookies; refresh and logout require the `X-CSRF-Token` header. Protected endpoints enforce both role permissions and resource ownership, including clinician-only access to assigned patients, their own appointments, and their own doctor schedule.
 
-See [docs/api/authentication.md](docs/api/authentication.md) for request/response contracts, cookie behavior, RBAC, resource-scoping rules, and error codes.
+Management endpoints cover patients, doctors, departments, staff, recurring schedules and breaks, leave, unavailability, availability search, and the full appointment lifecycle. Booking, reschedule, and cancel operations support the `Idempotency-Key` header.
+
+See [docs/api/authentication.md](docs/api/authentication.md) for session contracts, cookie behavior, and token errors. See [docs/api/management.md](docs/api/management.md) for management request/response contracts, RBAC, scheduling rules, appointment transitions, and error codes.
 
 ## Deployment notes
 
@@ -288,11 +296,12 @@ Build both workspaces with `npm run build`, serve `frontend/dist` as static asse
 
 ## Current scope
 
-The database, appointment domain service, authentication, role-based authorization, and
-resource-scoped proof APIs are implemented. The HTTP API exposes health, auth, admin-user,
-patient, clinical-summary, appointment, doctor-schedule, and invoice-read endpoints. The
-frontend remains the initialized application shell. Business workflow UI, mutation APIs for
-appointments and billing, and broader hospital operations remain deferred.
+The database, authentication, role-based authorization, management services, and management
+HTTP APIs are implemented. The API exposes health, auth, admin-user, patient,
+clinical-summary, department, doctor, staff, schedule/leave/unavailability, availability,
+appointment, and invoice-read endpoints. The frontend remains the initialized application
+shell. Business workflow UI, clinical mutation APIs, billing mutations, and broader hospital
+operations remain deferred.
 
 ## Verification
 
@@ -305,12 +314,15 @@ npm audit
 ```
 
 `npm run verify` runs TypeScript checks, ESLint, and production builds for both workspaces.
-`npm test` runs the backend integration suite against the configured test database. It
-creates isolated `authtest-` fixtures, exercises authentication, CSRF, refresh rotation and
-reuse detection, logout, password changes, RBAC, clinician resource scoping, rate limiting,
-and audit logging, then removes its data.
+`npm test` runs the backend integration suites against the configured test database. The
+auth suite creates isolated `authtest-` fixtures and exercises authentication, CSRF, refresh
+rotation and reuse detection, logout, password changes, RBAC, clinician resource scoping,
+rate limiting, and audit logging. The management suite creates isolated `mgmttest-` fixtures
+and exercises patient/doctor/department/staff CRUD, schedule and availability computation,
+idempotent and concurrent booking, rescheduling, cancellation, status transitions, filtering,
+and audit records. Both suites remove their data.
 `npm run db:verify` requires a running, migrated, and seeded database with the backend
-environment configured. It validates migrations, all 17 tables, 30 custom constraints,
+environment configured. It validates four migrations, all 20 tables, 33 custom constraints,
 case-insensitive email uniqueness, referential integrity, the appointment exclusion
 constraint, representative CHECK failures, and the idempotent booking/reschedule/cancel
 transaction flow. Verification data is removed in a `finally` block.

@@ -147,9 +147,9 @@ The frontend validates its public environment with Zod in `src/utils/env.ts`. Fr
 
 Prisma reads `DATABASE_URL` from the backend environment. The client is created once and reused, with a development singleton guard to avoid duplicate clients during hot reload. The client is disconnected during graceful shutdown.
 
-The schema now defines 17 models, 17 enums, and three committed migrations. PostgreSQL enforces the critical invariants through a `btree_gist` appointment exclusion constraint, case-insensitive email indexes, and 30 CHECK constraints. Synthetic development data is loaded through `backend/prisma/seed.ts`.
+The schema defines 20 models, 17 enums, and four committed migrations. PostgreSQL enforces the critical invariants through a `btree_gist` appointment exclusion constraint, case-insensitive email indexes, and 33 CHECK constraints. Synthetic development data is loaded through `backend/prisma/seed.ts`.
 
-The appointment domain service is implemented without exposing mutation HTTP routes yet. It performs idempotent booking, rescheduling, and cancellation in transactions, writes audit records, locks appointment rows for state changes, and maps database exclusion violations to application conflicts.
+Patient, doctor, department, staff, schedule, availability, and appointment modules expose management HTTP APIs. Appointment booking, rescheduling, cancellation, and status changes run in transactions with audit records and idempotency. The availability service derives exact schedule-aligned slots while excluding breaks, leave, unavailability, and active appointments. Booking and schedule mutations lock the doctor row, and database exclusion violations map to application conflicts.
 
 The complete data-layer specification is maintained in the [ER diagram](database/er-diagram.md), [data dictionary](database/data-dictionary.md), and [relationships and constraints guide](database/relationships-and-constraints.md).
 
@@ -165,16 +165,19 @@ token use scoped cookies, and refresh/logout require a matching `X-CSRF-Token` h
 authenticate middleware reloads the user on every protected request and rejects missing
 accounts, inactive accounts, stale roles, and stale auth versions.
 
-`modules/access` provides protected proof endpoints for the assessment. Role permissions
-are centralized in `auth.permissions.ts`; resource-level checks additionally limit
-clinicians to patients they are assigned to through appointments or visits, and to their
-own doctor schedules. Unauthorized clinician resource probes return `404` instead of
-revealing whether an unrelated record exists.
+`modules/access` retains the admin-user, clinical-summary, and invoice-read proof endpoints.
+Management modules implement patient, doctor, department, staff, schedule, availability, and
+appointment APIs. Role permissions are centralized in `auth.permissions.ts`; resource-level
+checks additionally limit clinicians to patients they are assigned to through appointments
+or visits, to their own appointments, and to their own doctor schedules. Unauthorized
+clinician resource probes return `404` instead of revealing whether an unrelated record
+exists.
 
 ### Security
 
 - Helmet sets HTTP security headers.
-- CORS is restricted to configured origins and allows the `X-CSRF-Token` header.
+- CORS is restricted to configured origins and allows the `X-CSRF-Token` and
+  `Idempotency-Key` headers.
 - The Express fingerprint header is disabled.
 - Request payloads are limited to 1 MB.
 - Secrets are required, length-validated, and excluded from source control.
@@ -205,9 +208,12 @@ Authentication integration tests run against the real API and database:
 npm test
 ```
 
-They create `authtest-` fixtures, exercise login, cookies, CSRF, refresh rotation and
-reuse, logout, password changes, RBAC, resource scoping, rate limiting, and audit logging,
-then remove their data.
+The auth suite creates `authtest-` fixtures, exercises login, cookies, CSRF, refresh rotation
+and reuse, logout, password changes, RBAC, resource scoping, rate limiting, and audit logging,
+then removes its data. The management suite creates `mgmttest-` fixtures and covers CRUD,
+permissions, doctor/staff session revocation, schedule and availability computation,
+idempotent and concurrent booking, rescheduling, cancellation, status transitions, filtering,
+and audit records.
 
 The database gate is:
 
@@ -219,8 +225,8 @@ It requires a running, migrated, and seeded PostgreSQL database plus a valid bac
 
 ## Scope boundary
 
-The foundation, data architecture, appointment domain service, authentication, and
-resource-scoped authorization APIs are complete. The hospital workflow UI, appointment and
-billing mutation APIs, and broader operational modules remain deferred. The architecture is
-ready for those modules without introducing new deployables or changing the overall request
-lifecycle.
+The foundation, data architecture, authentication, resource-scoped authorization, and
+management APIs for patients, doctors, departments, staff, schedules, availability, and
+appointments are complete. The hospital workflow UI, clinical mutation APIs, billing
+mutations, and broader operational modules remain deferred. The architecture is ready for
+those modules without introducing new deployables or changing the overall request lifecycle.

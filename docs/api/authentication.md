@@ -193,35 +193,47 @@ Validation failures also include `details`, an array of field paths and messages
 | `users:manage`           | Yes   | No         | No        |
 | `patients:create`        | Yes   | Yes        | No        |
 | `patients:read`          | Yes   | Yes        | Yes       |
+| `patients:update`        | Yes   | Yes        | No        |
 | `patients:clinical:read` | Yes   | No         | Yes       |
+| `doctors:read`           | Yes   | Yes        | Yes       |
+| `doctors:manage`         | Yes   | No         | No        |
+| `departments:read`       | Yes   | Yes        | Yes       |
+| `departments:manage`     | Yes   | No         | No        |
+| `staff:read`             | Yes   | No         | No        |
+| `staff:manage`           | Yes   | No         | No        |
 | `appointments:read`      | Yes   | Yes        | Yes       |
+| `appointments:manage`    | Yes   | Yes        | No        |
 | `schedules:read`         | Yes   | Yes        | Yes       |
+| `schedules:manage`       | Yes   | No         | No        |
 | `billing:read`           | Yes   | Yes        | No        |
 
-## Protected proof endpoints
+## Protected resource endpoints
+
+The full management contract is in [management.md](management.md). Representative resource
+rules:
 
 | Method and path                                 | Permission               | Additional resource rule                                              |
 | ----------------------------------------------- | ------------------------ | --------------------------------------------------------------------- |
 | `GET /api/admin/users`                          | `users:manage`           | None                                                                  |
-| `POST /api/patients`                            | `patients:create`        | Strict patient body; returns `201`                                    |
 | `GET /api/patients/:patientId`                  | `patients:read`          | Clinicians only see patients assigned through an appointment or visit |
+| `PATCH /api/patients/:patientId`                | `patients:update`        | Front desk cannot set `allergies` or `notes`                          |
 | `GET /api/patients/:patientId/clinical-summary` | `patients:clinical:read` | Same clinician assignment rule                                        |
 | `GET /api/appointments`                         | `appointments:read`      | Clinicians only see appointments for their own doctor profile         |
+| `POST /api/appointments`                        | `appointments:manage`    | Exact availability slot and idempotency required                      |
 | `GET /api/doctors/:doctorId/schedule`           | `schedules:read`         | Clinicians only see their own doctor schedule                         |
 | `GET /api/billing/invoices/:invoiceId`          | `billing:read`           | None                                                                  |
 
-Clinician probes for unrelated patients return `404 PATIENT_NOT_FOUND`. Probes for another
-doctor's schedule return `404 DOCTOR_NOT_FOUND`. This avoids disclosing whether an unrelated
-record exists.
+Clinician probes for unrelated patients return `404 PATIENT_NOT_FOUND`. Probes for unrelated
+appointments or another doctor's schedule return `404 APPOINTMENT_NOT_FOUND` or
+`404 DOCTOR_NOT_FOUND`. This avoids disclosing whether an unrelated record exists.
 
 Front-desk patient reads intentionally omit the sensitive `allergies` and `notes` fields.
 Admin reads return the complete patient record. Clinical summaries include the patient's
 allergy data, visit history, prescriptions, diagnostic reports, and a compact invoice
 reference.
 
-`POST /api/patients` accepts `firstName`, `lastName`, `dateOfBirth`, and optional demographic
-and contact fields. `dateOfBirth` must use `YYYY-MM-DD`, be a real date, and not be in the
-future. Unknown body fields are rejected.
+Patient create and update bodies are strict. `dateOfBirth` must use `YYYY-MM-DD`, be a real
+date, and not be in the future. Unknown body fields are rejected.
 
 ## Client workflow
 
@@ -257,11 +269,12 @@ Rate limiters are in-process fixed-window counters. They are appropriate for thi
 single-process assessment deployment but require a shared store such as Redis before running
 multiple API instances behind a load balancer.
 
-The integration suite is in `backend/tests/auth.test.ts` and runs with:
+The auth integration suite is in `backend/tests/auth.test.ts`; the management suite is in
+`backend/tests/management.test.ts`. Both run with:
 
 ```bash
 npm test
 ```
 
-It requires a migrated database and `DATABASE_URL`. Test fixtures use the `authtest-` prefix
-and are removed before and after the run.
+They require a migrated database and `DATABASE_URL`. Auth fixtures use the `authtest-` prefix
+and management fixtures use `mgmttest-`; both are removed before and after the run.

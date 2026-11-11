@@ -233,11 +233,13 @@ model Doctor {
   createdAt       DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
 
-  user         User             @relation(fields: [userId], references: [id], onDelete: Restrict)
-  department   Department       @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  schedules    DoctorSchedule[]
-  appointments Appointment[]
-  visits       Visit[]
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department     Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  schedules      DoctorSchedule[]
+  leaves         DoctorLeave[]
+  unavailability DoctorUnavailability[]
+  appointments   Appointment[]
+  visits         Visit[]
 
   @@index([departmentId, status])
   @@index([lastName, firstName])
@@ -278,10 +280,52 @@ model DoctorSchedule {
   createdAt           DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
 
-  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  doctor Doctor                @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  breaks DoctorScheduleBreak[]
 
   @@unique([doctorId, dayOfWeek, startTime])
   @@index([doctorId, dayOfWeek, isActive])
+}
+
+model DoctorScheduleBreak {
+  id         String   @id @default(cuid())
+  scheduleId String
+  startTime  DateTime @db.Time(0)
+  endTime    DateTime @db.Time(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  schedule DoctorSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+}
+
+model DoctorLeave {
+  id        String   @id @default(cuid())
+  doctorId  String
+  startAt   DateTime @db.Timestamptz(3)
+  endAt     DateTime @db.Timestamptz(3)
+  reason    String?  @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, startAt, endAt])
+}
+
+model DoctorUnavailability {
+  id        String   @id @default(cuid())
+  doctorId  String
+  startAt   DateTime @db.Timestamptz(3)
+  endAt     DateTime @db.Timestamptz(3)
+  reason    String?  @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  doctor Doctor @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, startAt, endAt])
 }
 
 model Appointment {

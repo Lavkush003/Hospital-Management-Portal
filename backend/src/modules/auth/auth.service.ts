@@ -195,6 +195,10 @@ export interface RefreshInput {
   requestMetadata: RequestMetadata;
 }
 
+function revocationTimestamp(now: Date, createdAt: Date): Date {
+  return new Date(Math.max(now.getTime(), createdAt.getTime()));
+}
+
 export async function refreshSession(input: RefreshInput): Promise<AuthSession> {
   if (!input.refreshToken) {
     throw new AppError(
@@ -231,10 +235,14 @@ export async function refreshSession(input: RefreshInput): Promise<AuthSession> 
     }
 
     if (token.revokedAt) {
-      await transaction.refreshToken.updateMany({
-        where: { familyId: token.familyId, revokedAt: null },
-        data: { revokedAt: now, revokedReason: 'REUSE_DETECTED' },
-      });
+      await transaction.$executeRaw`
+        UPDATE "RefreshToken"
+        SET
+          "revokedAt" = GREATEST(${now}, "createdAt"),
+          "revokedReason" = 'REUSE_DETECTED',
+          "updatedAt" = GREATEST(${now}, "createdAt")
+        WHERE "familyId" = ${token.familyId} AND "revokedAt" IS NULL
+      `;
 
       await writeAuditLog(
         {
@@ -254,7 +262,10 @@ export async function refreshSession(input: RefreshInput): Promise<AuthSession> 
     if (token.expiresAt.getTime() <= now.getTime()) {
       await transaction.refreshToken.update({
         where: { id: token.id },
-        data: { revokedAt: now, revokedReason: 'EXPIRED' },
+        data: {
+          revokedAt: revocationTimestamp(now, token.createdAt),
+          revokedReason: 'EXPIRED',
+        },
       });
 
       await writeAuditLog(
@@ -275,7 +286,10 @@ export async function refreshSession(input: RefreshInput): Promise<AuthSession> 
     if (token.user.status !== 'ACTIVE') {
       await transaction.refreshToken.update({
         where: { id: token.id },
-        data: { revokedAt: now, revokedReason: 'ACCOUNT_INACTIVE' },
+        data: {
+          revokedAt: revocationTimestamp(now, token.createdAt),
+          revokedReason: 'ACCOUNT_INACTIVE',
+        },
       });
 
       await writeAuditLog(
@@ -308,7 +322,7 @@ export async function refreshSession(input: RefreshInput): Promise<AuthSession> 
     await transaction.refreshToken.update({
       where: { id: token.id },
       data: {
-        revokedAt: now,
+        revokedAt: revocationTimestamp(now, token.createdAt),
         revokedReason: 'ROTATED',
         replacedByTokenId: nextToken.id,
       },
@@ -409,10 +423,14 @@ export async function logout(input: LogoutInput): Promise<void> {
       return;
     }
 
-    await transaction.refreshToken.updateMany({
-      where: { familyId: token.familyId, revokedAt: null },
-      data: { revokedAt: now, revokedReason: 'LOGOUT' },
-    });
+    await transaction.$executeRaw`
+      UPDATE "RefreshToken"
+      SET
+        "revokedAt" = GREATEST(${now}, "createdAt"),
+        "revokedReason" = 'LOGOUT',
+        "updatedAt" = GREATEST(${now}, "createdAt")
+      WHERE "familyId" = ${token.familyId} AND "revokedAt" IS NULL
+    `;
 
     await writeAuditLog(
       {
@@ -489,10 +507,14 @@ export async function changePassword(input: ChangePasswordInputWithActor): Promi
       },
     });
 
-    const revokedSessions = await transaction.refreshToken.updateMany({
-      where: { userId: user.id, revokedAt: null },
-      data: { revokedAt: changedAt, revokedReason: 'PASSWORD_CHANGED' },
-    });
+    const revokedSessions = await transaction.$executeRaw`
+      UPDATE "RefreshToken"
+      SET
+        "revokedAt" = GREATEST(${changedAt}, "createdAt"),
+        "revokedReason" = 'PASSWORD_CHANGED',
+        "updatedAt" = GREATEST(${changedAt}, "createdAt")
+      WHERE "userId" = ${user.id} AND "revokedAt" IS NULL
+    `;
 
     await writeAuditLog(
       {
@@ -502,7 +524,7 @@ export async function changePassword(input: ChangePasswordInputWithActor): Promi
         entityId: user.id,
         metadata: {
           authVersion: user.authVersion + 1,
-          revokedSessions: revokedSessions.count,
+          revokedSessions,
         },
         request: input.requestMetadata,
       },

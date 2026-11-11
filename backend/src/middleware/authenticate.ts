@@ -46,7 +46,15 @@ export const authenticate: RequestHandler = async (request, _response, next) => 
       );
     }
 
-    const claims = verifyAccessToken(token);
+    let claims: ReturnType<typeof verifyAccessToken>;
+
+    try {
+      claims = verifyAccessToken(token);
+    } catch (error) {
+      next(mapAuthenticationError(error));
+      return;
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: claims.sub },
       select: {
@@ -110,6 +118,6 @@ export const authenticate: RequestHandler = async (request, _response, next) => 
 
     next();
   } catch (error) {
-    next(mapAuthenticationError(error));
+    next(error);
   }
 };

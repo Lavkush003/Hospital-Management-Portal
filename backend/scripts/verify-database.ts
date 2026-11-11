@@ -23,6 +23,9 @@ const EXPECTED_MODEL_TABLES = [
   'Doctor',
   'Staff',
   'DoctorSchedule',
+  'DoctorScheduleBreak',
+  'DoctorLeave',
+  'DoctorUnavailability',
   'Appointment',
   'Visit',
   'Prescription',
@@ -40,6 +43,9 @@ const EXPECTED_CONSTRAINTS = [
   'Doctor_consultation_fee_nonnegative_check',
   'DoctorSchedule_time_order_check',
   'DoctorSchedule_slot_duration_check',
+  'DoctorScheduleBreak_time_order_check',
+  'DoctorLeave_time_order_check',
+  'DoctorUnavailability_time_order_check',
   'Appointment_time_order_check',
   'Appointment_cancelled_at_check',
   'Appointment_no_doctor_overlap_active_excl',
@@ -82,19 +88,6 @@ interface CheckResult {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function utcDay(daysFromToday: number, hour = 0, minute = 0): Date {
-  const now = new Date();
-  return new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() + daysFromToday,
-      hour,
-      minute,
-    ),
-  );
 }
 
 function addMinutes(value: Date, minutes: number): Date {
@@ -187,7 +180,7 @@ async function checkServerAndMigrations(): Promise<CheckResult> {
     ORDER BY started_at
   `;
 
-  assert.equal(migrations.length, 3, 'Expected exactly three Prisma migrations');
+  assert.equal(migrations.length, 4, 'Expected exactly four Prisma migrations');
   assert.ok(
     migrations.every(
       (migration) => migration.finished_at !== null && migration.rolled_back_at === null,
@@ -252,6 +245,9 @@ async function checkSeedData(): Promise<CheckResult> {
     doctors,
     staff,
     schedules,
+    scheduleBreaks,
+    doctorLeaves,
+    doctorUnavailability,
     appointments,
     visits,
     prescriptions,
@@ -269,6 +265,9 @@ async function checkSeedData(): Promise<CheckResult> {
     prisma.doctor.count(),
     prisma.staff.count(),
     prisma.doctorSchedule.count(),
+    prisma.doctorScheduleBreak.count(),
+    prisma.doctorLeave.count(),
+    prisma.doctorUnavailability.count(),
     prisma.appointment.count(),
     prisma.visit.count(),
     prisma.prescription.count(),
@@ -287,6 +286,9 @@ async function checkSeedData(): Promise<CheckResult> {
   assert.equal(doctors, 3, 'Expected 3 seeded doctors');
   assert.equal(staff, 3, 'Expected 3 seeded staff members');
   assert.equal(schedules, 7, 'Expected 7 seeded doctor schedules');
+  assert.equal(scheduleBreaks, 2, 'Expected 2 seeded schedule breaks');
+  assert.equal(doctorLeaves, 1, 'Expected 1 seeded doctor leave');
+  assert.equal(doctorUnavailability, 1, 'Expected 1 seeded unavailability period');
   assert.equal(appointments, 8, 'Expected 8 seeded appointments');
   assert.equal(visits, 3, 'Expected 3 seeded visits');
   assert.equal(prescriptions, 2, 'Expected 2 seeded prescriptions');
@@ -484,13 +486,32 @@ async function checkIdempotencyAndAppointmentServices(): Promise<CheckResult> {
   const bookingKey = `${VERIFY_PREFIX}book-${runId}`;
   const doctorId = 'seed-doctor-garcia';
   const patientId = 'seed-patient-006';
+  const now = new Date();
+  let bookingDay = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2),
+  );
+
+  while (![1, 3].includes(bookingDay.getUTCDay())) {
+    bookingDay = new Date(bookingDay.getTime() + 86_400_000);
+  }
+
+  const at = (hour: number, minute: number): Date =>
+    new Date(
+      Date.UTC(
+        bookingDay.getUTCFullYear(),
+        bookingDay.getUTCMonth(),
+        bookingDay.getUTCDate(),
+        hour,
+        minute,
+      ),
+    );
 
   const firstBooking = await bookAppointment({
     actorUserId: 'seed-user-frontdesk',
     patientId,
     doctorId,
-    scheduledStart: utcDay(2, 10, 0),
-    scheduledEnd: utcDay(2, 10, 20),
+    scheduledStart: at(14, 0),
+    scheduledEnd: at(14, 20),
     reason: 'Verification appointment',
     notes,
     idempotencyKey: bookingKey,
@@ -503,8 +524,8 @@ async function checkIdempotencyAndAppointmentServices(): Promise<CheckResult> {
     actorUserId: 'seed-user-frontdesk',
     patientId,
     doctorId,
-    scheduledStart: utcDay(2, 10, 0),
-    scheduledEnd: utcDay(2, 10, 20),
+    scheduledStart: at(14, 0),
+    scheduledEnd: at(14, 20),
     reason: 'Verification appointment',
     notes,
     idempotencyKey: bookingKey,
@@ -517,8 +538,8 @@ async function checkIdempotencyAndAppointmentServices(): Promise<CheckResult> {
       actorUserId: 'seed-user-frontdesk',
       patientId,
       doctorId,
-      scheduledStart: utcDay(2, 10, 0),
-      scheduledEnd: utcDay(2, 10, 20),
+      scheduledStart: at(14, 0),
+      scheduledEnd: at(14, 20),
       reason: 'Different payload with the same idempotency key',
       notes,
       idempotencyKey: bookingKey,
@@ -527,20 +548,32 @@ async function checkIdempotencyAndAppointmentServices(): Promise<CheckResult> {
   assert.ok(reusedKeyError instanceof AppError);
   assert.equal(reusedKeyError.code, 'IDEMPOTENCY_KEY_REUSED');
 
+  const blocker = await bookAppointment({
+    actorUserId: 'seed-user-frontdesk',
+    patientId: 'seed-patient-005',
+    doctorId,
+    scheduledStart: at(14, 20),
+    scheduledEnd: at(14, 40),
+    reason: 'Verification blocking appointment',
+    notes,
+    idempotencyKey: `${VERIFY_PREFIX}block-${runId}`,
+  });
+  assert.equal(blocker.appointment.status, 'SCHEDULED');
+
   const conflictKey = `${VERIFY_PREFIX}reschedule-conflict-${runId}`;
   const conflictScope = `appointments.reschedule:${firstBooking.appointment.id}`;
   const conflictError = await captureError(() =>
     rescheduleAppointment({
       actorUserId: 'seed-user-frontdesk',
       appointmentId: firstBooking.appointment.id,
-      scheduledStart: utcDay(2, 9, 0),
-      scheduledEnd: utcDay(2, 9, 20),
+      scheduledStart: at(14, 20),
+      scheduledEnd: at(14, 40),
       reason: 'Intentional conflict with another active appointment',
       idempotencyKey: conflictKey,
     }),
   );
   assert.ok(conflictError instanceof AppError);
-  assert.equal(conflictError.code, 'APPOINTMENT_SLOT_CONFLICT');
+  assert.equal(conflictError.code, 'APPOINTMENT_SLOT_UNAVAILABLE');
 
   const failedIdempotencyRecord = await prisma.idempotencyKey.findUnique({
     where: {
@@ -560,8 +593,8 @@ async function checkIdempotencyAndAppointmentServices(): Promise<CheckResult> {
   const rescheduled = await rescheduleAppointment({
     actorUserId: 'seed-user-frontdesk',
     appointmentId: firstBooking.appointment.id,
-    scheduledStart: utcDay(2, 10, 30),
-    scheduledEnd: utcDay(2, 10, 50),
+    scheduledStart: at(14, 40),
+    scheduledEnd: at(15, 0),
     reason: 'Verification reschedule',
     idempotencyKey: `${VERIFY_PREFIX}reschedule-${runId}`,
   });
@@ -590,8 +623,8 @@ async function checkIdempotencyAndAppointmentServices(): Promise<CheckResult> {
     actorUserId: 'seed-user-frontdesk',
     patientId: 'seed-patient-005',
     doctorId,
-    scheduledStart: utcDay(2, 10, 30),
-    scheduledEnd: utcDay(2, 10, 50),
+    scheduledStart: at(14, 0),
+    scheduledEnd: at(14, 20),
     reason: 'Reuse slot released by cancellation',
     notes,
     idempotencyKey: `${VERIFY_PREFIX}after-cancel-${runId}`,
@@ -600,10 +633,9 @@ async function checkIdempotencyAndAppointmentServices(): Promise<CheckResult> {
 
   return {
     name: 'Idempotent appointment service and transactions',
-    details: `Booked, replayed, rejected key reuse, rejected overlap, rescheduled, cancelled, replayed cancellation, and reused the freed slot`,
+    details: `Booked, replayed, rejected key reuse, rejected unavailable slot, rescheduled, cancelled, replayed cancellation, and reused the freed slot`,
   };
 }
-
 async function main(): Promise<void> {
   const results: CheckResult[] = [];
 

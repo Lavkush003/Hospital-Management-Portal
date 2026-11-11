@@ -11,6 +11,9 @@ erDiagram
   DEPARTMENT ||--o{ DOCTOR : "employs"
   DEPARTMENT |o--o{ STAFF : "assigns"
   DOCTOR ||--o{ DOCTOR_SCHEDULE : "publishes"
+  DOCTOR_SCHEDULE ||--o{ DOCTOR_SCHEDULE_BREAK : "pauses"
+  DOCTOR ||--o{ DOCTOR_LEAVE : "is away"
+  DOCTOR ||--o{ DOCTOR_UNAVAILABILITY : "is unavailable"
 
   PATIENT ||--o{ APPOINTMENT : "books"
   DOCTOR ||--o{ APPOINTMENT : "receives"
@@ -98,6 +101,29 @@ erDiagram
     time endTime
     int slotDurationMinutes
     boolean isActive
+  }
+
+  DOCTOR_SCHEDULE_BREAK {
+    string id PK
+    string scheduleId FK
+    time startTime
+    time endTime
+  }
+
+  DOCTOR_LEAVE {
+    string id PK
+    string doctorId FK
+    datetime startAt
+    datetime endAt
+    string reason
+  }
+
+  DOCTOR_UNAVAILABILITY {
+    string id PK
+    string doctorId FK
+    datetime startAt
+    datetime endAt
+    string reason
   }
 
   APPOINTMENT {
@@ -236,32 +262,35 @@ erDiagram
 
 ## Relationship summary
 
-| Child / foreign key               | Parent         | Cardinality                    | On delete  |
-| --------------------------------- | -------------- | ------------------------------ | ---------- |
-| `Doctor.userId`                   | `User`         | Exactly one user per doctor    | `Restrict` |
-| `Staff.userId`                    | `User`         | Exactly one user per staff row | `Restrict` |
-| `Doctor.departmentId`             | `Department`   | Exactly one department         | `Restrict` |
-| `Staff.departmentId`              | `Department`   | Zero or one department         | `SetNull`  |
-| `DoctorSchedule.doctorId`         | `Doctor`       | Exactly one doctor             | `Cascade`  |
-| `Appointment.patientId`           | `Patient`      | Exactly one patient            | `Restrict` |
-| `Appointment.doctorId`            | `Doctor`       | Exactly one doctor             | `Restrict` |
-| `Appointment.createdById`         | `User`         | Zero or one creating user      | `SetNull`  |
-| `Appointment.cancelledById`       | `User`         | Zero or one cancelling user    | `SetNull`  |
-| `Appointment.rescheduledById`     | `User`         | Zero or one rescheduling user  | `SetNull`  |
-| `Visit.appointmentId`             | `Appointment`  | Zero or one appointment        | `SetNull`  |
-| `Visit.patientId`                 | `Patient`      | Exactly one patient            | `Restrict` |
-| `Visit.doctorId`                  | `Doctor`       | Exactly one doctor             | `Restrict` |
-| `Prescription.visitId`            | `Visit`        | Exactly one visit              | `Restrict` |
-| `PrescriptionItem.prescriptionId` | `Prescription` | Exactly one prescription       | `Cascade`  |
-| `DiagnosticReport.visitId`        | `Visit`        | Exactly one visit              | `Restrict` |
-| `Invoice.visitId`                 | `Visit`        | Exactly one visit, unique      | `Restrict` |
-| `InvoiceItem.invoiceId`           | `Invoice`      | Exactly one invoice            | `Cascade`  |
-| `Payment.invoiceId`               | `Invoice`      | Exactly one invoice            | `Restrict` |
-| `Payment.receivedById`            | `User`         | Zero or one receiving user     | `SetNull`  |
-| `AuditLog.actorUserId`            | `User`         | Zero or one acting user        | `SetNull`  |
-| `IdempotencyKey.actorUserId`      | `User`         | Exactly one acting user        | `Cascade`  |
-| `RefreshToken.userId`             | `User`         | Exactly one token owner        | `Cascade`  |
-| `RefreshToken.replacedByTokenId`  | `RefreshToken` | Zero or one replacement token  | `SetNull`  |
+| Child / foreign key               | Parent           | Cardinality                    | On delete  |
+| --------------------------------- | ---------------- | ------------------------------ | ---------- |
+| `Doctor.userId`                   | `User`           | Exactly one user per doctor    | `Restrict` |
+| `Staff.userId`                    | `User`           | Exactly one user per staff row | `Restrict` |
+| `Doctor.departmentId`             | `Department`     | Exactly one department         | `Restrict` |
+| `Staff.departmentId`              | `Department`     | Zero or one department         | `SetNull`  |
+| `DoctorSchedule.doctorId`         | `Doctor`         | Exactly one doctor             | `Cascade`  |
+| `DoctorScheduleBreak.scheduleId`  | `DoctorSchedule` | Exactly one schedule           | `Cascade`  |
+| `DoctorLeave.doctorId`            | `Doctor`         | Exactly one doctor             | `Cascade`  |
+| `DoctorUnavailability.doctorId`   | `Doctor`         | Exactly one doctor             | `Cascade`  |
+| `Appointment.patientId`           | `Patient`        | Exactly one patient            | `Restrict` |
+| `Appointment.doctorId`            | `Doctor`         | Exactly one doctor             | `Restrict` |
+| `Appointment.createdById`         | `User`           | Zero or one creating user      | `SetNull`  |
+| `Appointment.cancelledById`       | `User`           | Zero or one cancelling user    | `SetNull`  |
+| `Appointment.rescheduledById`     | `User`           | Zero or one rescheduling user  | `SetNull`  |
+| `Visit.appointmentId`             | `Appointment`    | Zero or one appointment        | `SetNull`  |
+| `Visit.patientId`                 | `Patient`        | Exactly one patient            | `Restrict` |
+| `Visit.doctorId`                  | `Doctor`         | Exactly one doctor             | `Restrict` |
+| `Prescription.visitId`            | `Visit`          | Exactly one visit              | `Restrict` |
+| `PrescriptionItem.prescriptionId` | `Prescription`   | Exactly one prescription       | `Cascade`  |
+| `DiagnosticReport.visitId`        | `Visit`          | Exactly one visit              | `Restrict` |
+| `Invoice.visitId`                 | `Visit`          | Exactly one visit, unique      | `Restrict` |
+| `InvoiceItem.invoiceId`           | `Invoice`        | Exactly one invoice            | `Cascade`  |
+| `Payment.invoiceId`               | `Invoice`        | Exactly one invoice            | `Restrict` |
+| `Payment.receivedById`            | `User`           | Zero or one receiving user     | `SetNull`  |
+| `AuditLog.actorUserId`            | `User`           | Zero or one acting user        | `SetNull`  |
+| `IdempotencyKey.actorUserId`      | `User`           | Exactly one acting user        | `Cascade`  |
+| `RefreshToken.userId`             | `User`           | Exactly one token owner        | `Cascade`  |
+| `RefreshToken.replacedByTokenId`  | `RefreshToken`   | Zero or one replacement token  | `SetNull`  |
 
 `AuditLog.entityType` and `AuditLog.entityId` are a deliberate polymorphic reference.
 They are not a foreign key because audit records may outlive the entity they describe.
@@ -269,7 +298,8 @@ They are not a foreign key because audit records may outlive the entity they des
 ## Aggregate boundaries
 
 - **Master data:** `User`, `Patient`, `Department`, `Doctor`, and `Staff`.
-- **Scheduling:** `DoctorSchedule` and `Appointment`.
+- **Scheduling:** `DoctorSchedule`, `DoctorScheduleBreak`, `DoctorLeave`,
+  `DoctorUnavailability`, and `Appointment`.
 - **Clinical encounter:** `Visit`, `Prescription`, `PrescriptionItem`, and
   `DiagnosticReport`.
 - **Revenue cycle:** `Invoice`, `InvoiceItem`, and `Payment`.

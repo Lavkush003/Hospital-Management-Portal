@@ -26,6 +26,9 @@ transactional behavior expected from application services.
 | `Department -> Doctor`              | Yes      | `Restrict`      | Doctors must be reassigned before department removal   |
 | `Department -> Staff`               | No       | `SetNull`       | Staff may be unassigned without losing the record      |
 | `Doctor -> DoctorSchedule`          | Yes      | `Cascade`       | Schedules are owned by a doctor                        |
+| `DoctorSchedule -> ScheduleBreak`   | Yes      | `Cascade`       | Breaks are owned by their schedule                     |
+| `Doctor -> DoctorLeave`             | Yes      | `Cascade`       | Leave records are owned by their doctor                |
+| `Doctor -> DoctorUnavailability`    | Yes      | `Cascade`       | Unavailability records are owned by their doctor       |
 | `Patient -> Appointment`            | Yes      | `Restrict`      | Appointment history must be retained                   |
 | `Doctor -> Appointment`             | Yes      | `Restrict`      | Appointment history must be retained                   |
 | `User -> Appointment.createdBy`     | No       | `SetNull`       | Keep appointment if an operator account is removed     |
@@ -54,13 +57,17 @@ clinical encounter.
 ## Custom CHECK constraints
 
 Prisma cannot express these rules in `schema.prisma`, so they are added by the
-`20261110070100_appointment_integrity` and `20261110073328_auth_refresh_tokens` migrations.
+`20261110070100_appointment_integrity`, `20261110073328_auth_refresh_tokens`, and
+`20261110080327_scheduling_availability` migrations.
 
 | Constraint                                       | Rule                                                                   |
 | ------------------------------------------------ | ---------------------------------------------------------------------- |
 | `Doctor_consultation_fee_nonnegative_check`      | `consultationFee >= 0`                                                 |
 | `DoctorSchedule_time_order_check`                | `endTime > startTime`                                                  |
 | `DoctorSchedule_slot_duration_check`             | `slotDurationMinutes BETWEEN 5 AND 240`                                |
+| `DoctorScheduleBreak_time_order_check`           | `endTime > startTime`                                                  |
+| `DoctorLeave_time_order_check`                   | `endAt > startAt`                                                      |
+| `DoctorUnavailability_time_order_check`          | `endAt > startAt`                                                      |
 | `Appointment_time_order_check`                   | `scheduledEnd > scheduledStart`                                        |
 | `Appointment_cancelled_at_check`                 | A cancelled appointment must have `cancelledAt`                        |
 | `Appointment_no_doctor_overlap_active_excl`      | Active appointment ranges for the same doctor cannot overlap           |
@@ -128,25 +135,28 @@ or contact identities while preserving the original casing of stored addresses.
 
 ## Index strategy
 
-| Table              | Indexes                                                                                                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `User`             | `(role, status)`, `(lastName, firstName)`, unique `lower(email)`                                                                                                           |
-| `Patient`          | `(lastName, firstName)`, `(phone)`, `(status)`, `(createdAt)`                                                                                                              |
-| `Department`       | `(isActive)`                                                                                                                                                               |
-| `Doctor`           | `(departmentId, status)`, `(lastName, firstName)`, `(specialization)`, unique `lower(email)`                                                                               |
-| `Staff`            | `(departmentId, status)`, `(lastName, firstName)`, unique `lower(email)`                                                                                                   |
-| `DoctorSchedule`   | Unique `(doctorId, dayOfWeek, startTime)`, `(doctorId, dayOfWeek, isActive)`                                                                                               |
-| `Appointment`      | `(doctorId, scheduledStart, scheduledEnd)`, `(patientId, scheduledStart)`, `(status, scheduledStart)`, `(scheduledStart)`, `(createdById)`, `(cancelledById, cancelledAt)` |
-| `Visit`            | `(patientId, startedAt)`, `(doctorId, startedAt)`, `(status)`, `(startedAt)`                                                                                               |
-| `Prescription`     | `(visitId, issuedAt)`, `(status)`, `(issuedAt)`                                                                                                                            |
-| `PrescriptionItem` | `(prescriptionId)`                                                                                                                                                         |
-| `DiagnosticReport` | `(visitId, orderedAt)`, `(status, orderedAt)`, `(type)`                                                                                                                    |
-| `Invoice`          | `(status, issuedAt)`, `(dueAt)`                                                                                                                                            |
-| `InvoiceItem`      | `(invoiceId)`                                                                                                                                                              |
-| `Payment`          | `(invoiceId, status)`, `(paidAt)`, `(receivedById)`                                                                                                                        |
-| `AuditLog`         | `(entityType, entityId, createdAt)`, `(actorUserId, createdAt)`, `(createdAt)`, `(requestId)`                                                                              |
-| `IdempotencyKey`   | Unique `(actorUserId, scope, key)`, `(expiresAt)`, `(status, expiresAt)`, `(resourceType, resourceId)`                                                                     |
-| `RefreshToken`     | Unique `(tokenHash)`, unique `(replacedByTokenId)`, `(userId, familyId)`, `(familyId)`, `(expiresAt)`, `(revokedAt, expiresAt)`                                            |
+| Table                  | Indexes                                                                                                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `User`                 | `(role, status)`, `(lastName, firstName)`, unique `lower(email)`                                                                                                           |
+| `Patient`              | `(lastName, firstName)`, `(phone)`, `(status)`, `(createdAt)`                                                                                                              |
+| `Department`           | `(isActive)`                                                                                                                                                               |
+| `Doctor`               | `(departmentId, status)`, `(lastName, firstName)`, `(specialization)`, unique `lower(email)`                                                                               |
+| `Staff`                | `(departmentId, status)`, `(lastName, firstName)`, unique `lower(email)`                                                                                                   |
+| `DoctorSchedule`       | Unique `(doctorId, dayOfWeek, startTime)`, `(doctorId, dayOfWeek, isActive)`                                                                                               |
+| `DoctorScheduleBreak`  | `(scheduleId)`                                                                                                                                                             |
+| `DoctorLeave`          | `(doctorId, startAt, endAt)`                                                                                                                                               |
+| `DoctorUnavailability` | `(doctorId, startAt, endAt)`                                                                                                                                               |
+| `Appointment`          | `(doctorId, scheduledStart, scheduledEnd)`, `(patientId, scheduledStart)`, `(status, scheduledStart)`, `(scheduledStart)`, `(createdById)`, `(cancelledById, cancelledAt)` |
+| `Visit`                | `(patientId, startedAt)`, `(doctorId, startedAt)`, `(status)`, `(startedAt)`                                                                                               |
+| `Prescription`         | `(visitId, issuedAt)`, `(status)`, `(issuedAt)`                                                                                                                            |
+| `PrescriptionItem`     | `(prescriptionId)`                                                                                                                                                         |
+| `DiagnosticReport`     | `(visitId, orderedAt)`, `(status, orderedAt)`, `(type)`                                                                                                                    |
+| `Invoice`              | `(status, issuedAt)`, `(dueAt)`                                                                                                                                            |
+| `InvoiceItem`          | `(invoiceId)`                                                                                                                                                              |
+| `Payment`              | `(invoiceId, status)`, `(paidAt)`, `(receivedById)`                                                                                                                        |
+| `AuditLog`             | `(entityType, entityId, createdAt)`, `(actorUserId, createdAt)`, `(createdAt)`, `(requestId)`                                                                              |
+| `IdempotencyKey`       | Unique `(actorUserId, scope, key)`, `(expiresAt)`, `(status, expiresAt)`, `(resourceType, resourceId)`                                                                     |
+| `RefreshToken`         | Unique `(tokenHash)`, unique `(replacedByTokenId)`, `(userId, familyId)`, `(familyId)`, `(expiresAt)`, `(revokedAt, expiresAt)`                                            |
 
 Indexes support the primary access paths: finding a patient by name or phone, listing a
 doctor's schedule and appointments, loading a visit timeline, reconciling invoices and
@@ -156,24 +166,29 @@ payments, and auditing by actor or entity.
 
 ### Booking
 
-1. Validate start/end ordering and active patient/doctor status.
-2. In one transaction, insert the pending idempotency record.
-3. Create the appointment and write an `APPOINTMENT_BOOKED` audit record.
-4. Mark the idempotency record `COMPLETED` with the appointment ID.
-5. If the exclusion constraint rejects the slot, the whole transaction rolls back,
+1. Validate start/end ordering and the future-time constraint.
+2. In one idempotent transaction, acquire the doctor row with `SELECT ... FOR UPDATE`.
+3. Verify the doctor is active and the patient exists and is active.
+4. Regenerate availability for the requested range and require an exact slot match. The
+   check excludes breaks, leave, unavailability, and active appointments.
+5. Create the appointment and write an `APPOINTMENT_BOOKED` audit record.
+6. Mark the idempotency record `COMPLETED` with the appointment ID.
+7. If the exclusion constraint still rejects the slot, the whole transaction rolls back,
    including the idempotency record and audit entry.
 
 ### Rescheduling and cancellation
 
-1. Acquire a row lock with `SELECT ... FOR UPDATE` on the appointment.
-2. Verify the appointment exists and is in an allowed status.
-3. Update the appointment and write before/after audit snapshots.
-4. Commit the idempotency record with the operation.
-5. If another transaction booked an overlapping active slot, PostgreSQL returns
+1. Acquire `SELECT ... FOR UPDATE` on the appointment.
+2. Verify the appointment exists and is reschedulable or cancellable.
+3. Rescheduling then locks the doctor row and revalidates the new exact slot.
+4. Update the appointment and write before/after audit snapshots.
+5. Commit the idempotency record with the operation.
+6. If another transaction booked an overlapping active slot, PostgreSQL returns
    `23P01` and the service returns `APPOINTMENT_SLOT_CONFLICT`.
 
-`FOR UPDATE` serializes competing reschedule/cancel operations on the same appointment.
-The exclusion constraint serializes competing bookings for the same doctor and time range.
+`FOR UPDATE` serializes competing booking and schedule mutations for the same doctor, and
+competing reschedule/cancel operations on the same appointment. The exclusion constraint
+remains the final database-level guard for overlapping active appointments.
 
 ### Idempotency
 
@@ -204,9 +219,9 @@ Refresh-token values are never stored directly. Only an HMAC-SHA-256 hash keyed 
 
 - All event timestamps use `timestamptz(3)`.
 - Date of birth and hire date use `date`.
-- Weekly schedule boundaries use `time(0)` and are recurring; they do not encode a date or
-  doctor-specific time zone.
-- Appointment ranges use half-open intervals.
+- Weekly schedule boundaries and breaks use `time(0)` and are recurring. They are evaluated
+  in UTC and do not encode a date or doctor-specific time zone.
+- Leave, unavailability, and appointment ranges use half-open intervals.
 - Money uses exact `numeric(12,2)` arithmetic. The database enforces invoice and line-total
   formulas so floating-point drift cannot create inconsistent balances.
 
@@ -220,9 +235,10 @@ npm run db:verify
 
 The verification script checks:
 
-- PostgreSQL connectivity and the three applied migrations.
-- All 17 model tables, `btree_gist`, 30 custom constraints, and three lower-email indexes.
-- Seeded row counts and absence of orphan visits, invoices, payments, and prescription items.
+- PostgreSQL connectivity and the four applied migrations.
+- All 20 model tables, `btree_gist`, 33 custom constraints, and three lower-email indexes.
+- Seeded row counts, including schedule breaks, leave, and unavailability, plus absence of
+  orphan visits, invoices, payments, and prescription items.
 - Case-insensitive email rejection.
 - Overlap rejection, cancelled-overlap acceptance, and adjacent-slot acceptance.
 - Representative CHECK constraint failures.

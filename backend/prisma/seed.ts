@@ -491,6 +491,41 @@ async function seed(): Promise<void> {
     },
   ];
 
+  const scheduleBreaks: Prisma.DoctorScheduleBreakCreateManyInput[] = [
+    {
+      id: 'seed-break-chen-mon',
+      scheduleId: 'seed-schedule-chen-mon',
+      startTime: timeOfDay(10, 30),
+      endTime: timeOfDay(11, 0),
+    },
+    {
+      id: 'seed-break-garcia-wed',
+      scheduleId: 'seed-schedule-garcia-wed',
+      startTime: timeOfDay(15, 0),
+      endTime: timeOfDay(15, 20),
+    },
+  ];
+
+  const doctorLeaves: Prisma.DoctorLeaveCreateManyInput[] = [
+    {
+      id: 'seed-leave-chen',
+      doctorId: 'seed-doctor-chen',
+      startAt: utcDay(10, 9, 0),
+      endAt: utcDay(10, 12, 0),
+      reason: 'Scheduled professional development day',
+    },
+  ];
+
+  const doctorUnavailability: Prisma.DoctorUnavailabilityCreateManyInput[] = [
+    {
+      id: 'seed-unavailability-patel',
+      doctorId: 'seed-doctor-patel',
+      startAt: utcDay(12, 10, 0),
+      endAt: utcDay(12, 13, 0),
+      reason: 'Hospital committee meeting',
+    },
+  ];
+
   const appointments: Prisma.AppointmentCreateManyInput[] = [
     {
       id: 'seed-appointment-001',
@@ -958,6 +993,9 @@ async function seed(): Promise<void> {
     prisma.doctor.createMany({ data: doctors }),
     prisma.staff.createMany({ data: staff }),
     prisma.doctorSchedule.createMany({ data: schedules }),
+    prisma.doctorScheduleBreak.createMany({ data: scheduleBreaks }),
+    prisma.doctorLeave.createMany({ data: doctorLeaves }),
+    prisma.doctorUnavailability.createMany({ data: doctorUnavailability }),
     prisma.appointment.createMany({ data: appointments }),
     prisma.visit.createMany({ data: visits }),
     prisma.prescription.createMany({ data: prescriptions }),

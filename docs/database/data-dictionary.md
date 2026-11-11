@@ -22,7 +22,9 @@ document uses the Prisma names for readability.
 | `now()`          | PostgreSQL current transaction timestamp                             |
 
 All monetary values use `numeric(12,2)`. All application timestamps use
-`timestamptz(3)` so they remain unambiguous across server and client time zones.
+`timestamptz(3)` so they remain unambiguous across server and client time zones. Recurring
+`time(0)` values are evaluated in UTC; Prisma returns them anchored to `1970-01-01` and the
+API serializes them as `HH:mm`.
 
 ## Enum catalog
 
@@ -189,6 +191,55 @@ Defines recurring weekly availability blocks for a doctor.
 
 Unique: `(doctorId, dayOfWeek, startTime)`. Index: `(doctorId, dayOfWeek, isActive)`.
 CHECKs: `DoctorSchedule_time_order_check`, `DoctorSchedule_slot_duration_check`.
+
+## DoctorScheduleBreak
+
+A recurring pause inside a weekly schedule block. Breaks are owned by the schedule and are
+removed with it.
+
+| Field        | Database type    | Attributes / default | Description           |
+| ------------ | ---------------- | -------------------- | --------------------- |
+| `id`         | `text`           | PK, `cuid()`         | Primary identifier    |
+| `scheduleId` | `text`           | FK                   | Parent schedule       |
+| `startTime`  | `time(0)`        | Required             | Break start time      |
+| `endTime`    | `time(0)`        | Required             | Break end time        |
+| `createdAt`  | `timestamptz(3)` | Default `now()`      | Creation timestamp    |
+| `updatedAt`  | `timestamptz(3)` | `@updatedAt`         | Last update timestamp |
+
+Index: `(scheduleId)`. CHECK: `DoctorScheduleBreak_time_order_check`.
+
+## DoctorLeave
+
+A dated leave interval that suppresses appointment availability for a doctor.
+
+| Field       | Database type    | Attributes / default | Description            |
+| ----------- | ---------------- | -------------------- | ---------------------- |
+| `id`        | `text`           | PK, `cuid()`         | Primary identifier     |
+| `doctorId`  | `text`           | FK                   | Doctor who is on leave |
+| `startAt`   | `timestamptz(3)` | Required             | Leave interval start   |
+| `endAt`     | `timestamptz(3)` | Required             | Leave interval end     |
+| `reason`    | `varchar(500)`   | Nullable             | Administrative reason  |
+| `createdAt` | `timestamptz(3)` | Default `now()`      | Creation timestamp     |
+| `updatedAt` | `timestamptz(3)` | `@updatedAt`         | Last update timestamp  |
+
+Index: `(doctorId, startAt, endAt)`. CHECK: `DoctorLeave_time_order_check`.
+
+## DoctorUnavailability
+
+A dated ad hoc unavailability interval, such as a meeting or emergency, that suppresses
+appointment availability for a doctor.
+
+| Field       | Database type    | Attributes / default | Description                   |
+| ----------- | ---------------- | -------------------- | ----------------------------- |
+| `id`        | `text`           | PK, `cuid()`         | Primary identifier            |
+| `doctorId`  | `text`           | FK                   | Unavailable doctor            |
+| `startAt`   | `timestamptz(3)` | Required             | Unavailability interval start |
+| `endAt`     | `timestamptz(3)` | Required             | Unavailability interval end   |
+| `reason`    | `varchar(500)`   | Nullable             | Administrative reason         |
+| `createdAt` | `timestamptz(3)` | Default `now()`      | Creation timestamp            |
+| `updatedAt` | `timestamptz(3)` | `@updatedAt`         | Last update timestamp         |
+
+Index: `(doctorId, startAt, endAt)`. CHECK: `DoctorUnavailability_time_order_check`.
 
 ## Appointment
 
