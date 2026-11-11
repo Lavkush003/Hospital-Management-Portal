@@ -141,7 +141,11 @@ export async function createPatient(
   }
 }
 
-export async function getPatient(patientId: string, actor: AuthenticatedUser): Promise<unknown> {
+export async function getPatient(
+  patientId: string,
+  actor: AuthenticatedUser,
+  request: RequestMetadata,
+): Promise<unknown> {
   const patient = await prisma.patient.findUnique({ where: { id: patientId } });
 
   if (!patient) {
@@ -149,6 +153,17 @@ export async function getPatient(patientId: string, actor: AuthenticatedUser): P
   }
 
   await assertPatientAccess(actor, patientId);
+
+  if (hasPermission(actor.role, PERMISSIONS.PATIENTS_CLINICAL_READ)) {
+    await writeAuditLog({
+      actorUserId: actor.id,
+      action: 'PATIENT_CLINICAL_FIELDS_READ',
+      entityType: 'Patient',
+      entityId: patientId,
+      request,
+    });
+  }
+
   return serializePatient(patient, actor);
 }
 
@@ -193,6 +208,7 @@ export async function updatePatient(
 export async function listPatients(
   query: PatientListQuery,
   actor: AuthenticatedUser,
+  request: RequestMetadata,
 ): Promise<PatientListResult> {
   const conditions: Prisma.PatientWhereInput[] = [];
 
@@ -233,6 +249,22 @@ export async function listPatients(
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { id: 'asc' }],
     }),
   ]);
+
+  if (hasPermission(actor.role, PERMISSIONS.PATIENTS_CLINICAL_READ)) {
+    await writeAuditLog({
+      actorUserId: actor.id,
+      action: 'PATIENT_CLINICAL_FIELDS_LIST_READ',
+      entityType: 'PatientQuery',
+      entityId: actor.id,
+      metadata: {
+        resultCount: patients.length,
+        patientIds: patients.map((patient) => patient.id),
+        page: query.page,
+        pageSize: query.pageSize,
+      },
+      request,
+    });
+  }
 
   return {
     patients: patients.map((patient) => serializePatient(patient, actor)),

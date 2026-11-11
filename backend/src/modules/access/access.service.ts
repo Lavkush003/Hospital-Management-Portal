@@ -1,7 +1,8 @@
 import { prisma } from '../../config/prisma';
+import { writeAuditLog } from '../../utils/audit';
 import { AppError } from '../../utils/errors';
 import { HTTP_STATUS } from '../../utils/http-status';
-import type { AuthenticatedUser } from '../auth/auth.types';
+import type { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { assertPatientAccess, patientNotFoundError } from '../patients/patient-access';
 
 export async function listUsers(): Promise<unknown[]> {
@@ -27,6 +28,7 @@ export async function listUsers(): Promise<unknown[]> {
 export async function getClinicalSummary(
   patientId: string,
   actor: AuthenticatedUser,
+  request: RequestMetadata,
 ): Promise<unknown> {
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
@@ -90,6 +92,18 @@ export async function getClinicalSummary(
       diagnosticReports: {
         orderBy: { orderedAt: 'desc' },
       },
+      notes: {
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          content: true,
+          createdAt: true,
+          updatedAt: true,
+          author: {
+            select: { id: true, firstName: true, lastName: true, role: true },
+          },
+        },
+      },
       invoice: {
         select: {
           id: true,
@@ -102,6 +116,20 @@ export async function getClinicalSummary(
     },
     orderBy: { startedAt: 'desc' },
     take: 100,
+  });
+
+  await writeAuditLog({
+    actorUserId: actor.id,
+    action: 'PATIENT_CLINICAL_SUMMARY_READ',
+    entityType: 'Patient',
+    entityId: patientId,
+    metadata: {
+      visitCount: visits.length,
+      noteCount: visits.reduce((count, visit) => count + visit.notes.length, 0),
+      prescriptionCount: visits.reduce((count, visit) => count + visit.prescriptions.length, 0),
+      reportCount: visits.reduce((count, visit) => count + visit.diagnosticReports.length, 0),
+    },
+    request,
   });
 
   return { patient, visits };

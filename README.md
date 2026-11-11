@@ -23,7 +23,7 @@ Production-oriented Hospital Management System for the Algions AI Labs Full-Stac
 │   └── src/
 │       ├── config/          Environment, logger, and Prisma clients
 │       ├── middleware/      Authentication, authorization, CSRF, and errors
-│       ├── modules/         Health, auth, patients, doctors, departments, staff, schedules, appointments, and access
+│       ├── modules/         Health, auth, patients, doctors, departments, staff, schedules, appointments, clinical records, and access
 │       ├── routes/          API route composition
 │       ├── services/        Reusable application services
 │       ├── types/           Backend-owned types

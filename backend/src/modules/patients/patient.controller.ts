@@ -11,7 +11,11 @@ import {
 
 export const listPatientsController: RequestHandler = async (request, response) => {
   const query = patientListQuerySchema.parse(request.query);
-  const result = await listPatients(query, requireActor(request));
+  const result = await listPatients(
+    query,
+    requireActor(request),
+    getRequestMetadata(request, response),
+  );
 
   setNoStore(response);
   response.status(HTTP_STATUS.OK).json(result);
@@ -29,7 +33,11 @@ export const createPatientController: RequestHandler = async (request, response)
 };
 
 export const getPatientController: RequestHandler = async (request, response) => {
-  const patient = await getPatient(getRouteId(request, 'patientId'), requireActor(request));
+  const patient = await getPatient(
+    getRouteId(request, 'patientId'),
+    requireActor(request),
+    getRequestMetadata(request, response),
+  );
 
   setNoStore(response);
   response.status(HTTP_STATUS.OK).json({ patient });

@@ -160,6 +160,8 @@ model User {
   rescheduledAppointments Appointment[]    @relation("AppointmentRescheduledBy")
   receivedPayments        Payment[]        @relation("PaymentReceivedBy")
   idempotencyKeys         IdempotencyKey[]
+  authoredClinicalNotes   ClinicalNote[]   @relation("ClinicalNoteAuthor")
+  editedNoteRevisions     ClinicalNoteRevision[] @relation("ClinicalNoteEditor")
 
   @@index([role, status])
   @@index([lastName, firstName])
@@ -191,6 +193,7 @@ model Patient {
 
   appointments Appointment[]
   visits       Visit[]
+  clinicalNotes ClinicalNote[]
 
   @@index([lastName, firstName])
   @@index([phone])
@@ -382,6 +385,8 @@ model Visit {
   oxygenSaturation Int?
   startedAt        DateTime    @default(now()) @db.Timestamptz(3)
   endedAt          DateTime?   @db.Timestamptz(3)
+  followUpAt       DateTime?   @db.Timestamptz(3)
+  followUpNotes    String?     @db.VarChar(1000)
   createdAt        DateTime    @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
 
@@ -390,6 +395,7 @@ model Visit {
   doctor            Doctor             @relation(fields: [doctorId], references: [id], onDelete: Restrict)
   prescriptions     Prescription[]
   diagnosticReports DiagnosticReport[]
+  notes             ClinicalNote[]
   invoice           Invoice?
 
   @@index([patientId, startedAt])
@@ -442,6 +448,7 @@ model DiagnosticReport {
   testName      String                 @db.VarChar(200)
   resultSummary String?                @db.Text
   resultDetails String?                @db.Text
+  fileMetadata  Json?
   orderedAt     DateTime               @default(now()) @db.Timestamptz(3)
   completedAt   DateTime?              @db.Timestamptz(3)
   createdAt     DateTime               @default(now()) @db.Timestamptz(3)
@@ -452,6 +459,44 @@ model DiagnosticReport {
   @@index([visitId, orderedAt])
   @@index([status, orderedAt])
   @@index([type])
+}
+
+model ClinicalNote {
+  id        String   @id @default(cuid())
+  visitId   String
+  patientId String
+  authorId  String?
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  visit     Visit                  @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  patient   Patient                @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  author    User?                  @relation("ClinicalNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  revisions ClinicalNoteRevision[]
+
+  @@index([visitId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model ClinicalNoteRevision {
+  id              String   @id @default(cuid())
+  noteId          String
+  revisionNumber  Int
+  previousContent String   @db.Text
+  newContent      String   @db.Text
+  editReason      String?  @db.VarChar(500)
+  editedById      String?
+  editedAt        DateTime @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  note     ClinicalNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  editedBy User?        @relation("ClinicalNoteEditor", fields: [editedById], references: [id], onDelete: SetNull)
+
+  @@unique([noteId, revisionNumber])
+  @@index([noteId, editedAt])
 }
 
 model Invoice {

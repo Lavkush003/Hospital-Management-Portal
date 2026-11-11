@@ -1,8 +1,8 @@
 # Management API
 
-All routes are mounted under `/api` and require a Bearer access token. The management API
-covers patients, doctors, departments, staff, recurring schedules and availability, and
-appointment booking. Clinical and billing mutation APIs remain deferred.
+All routes are mounted under `/api` and require a Bearer access token. The management API covers patients, doctors, departments, staff, recurring schedules and
+availability, appointment booking, and clinical encounter records. Billing mutation APIs
+remain deferred.
 
 This document complements [authentication.md](authentication.md), which defines session
 handling, CSRF, token errors, and the shared error envelope.
@@ -42,10 +42,13 @@ Success responses use resource envelopes such as `{ "patient": { ... } }`,
 | `appointments:manage`    | Yes   | Yes        | No        |
 | `schedules:read`         | Yes   | Yes        | Yes       |
 | `schedules:manage`       | Yes   | No         | No        |
-| `billing:read`           | Yes   | Yes        | No        |
+| `clinical:read`         | Yes   | No         | Yes       |
+| `clinical:manage`       | Yes   | No         | Yes       |
+| `billing:read`          | Yes   | Yes        | No        |
 
-Clinicians are additionally scoped to their own doctor profile for schedules and to
-patients they are assigned to through appointments or visits.
+Clinicians are additionally scoped to their own doctor profile for schedules and encounter
+modifications, and to patients they are assigned to through appointments or visits.
+Front-desk users cannot read or modify clinical encounter records.
 
 ## Patients
 
@@ -236,6 +239,50 @@ Appointment errors include `APPOINTMENT_NOT_FOUND`, `APPOINTMENT_SLOT_UNAVAILABL
 `APPOINTMENT_STATUS_TRANSITION_INVALID`, `APPOINTMENT_STATUS_UNCHANGED`,
 `APPOINTMENT_CANCELLATION_REQUIRED`, and `APPOINTMENT_REFERENCE_CONFLICT`.
 
+## Clinical records
+
+All clinical routes require authentication and `clinical:read` or `clinical:manage`.
+Administrators have both permissions. Clinicians can access records only for patients
+assigned through an appointment or encounter. Encounter writes require the responsible
+clinician; clinical-note edits are restricted to the note author (or an administrator).
+Front-desk users have neither permission. Clinical responses are not cacheable, and
+cross-patient encounter reads return `404 VISIT_NOT_FOUND`.
+
+| Method and path | Permission | Purpose |
+| --------------- | ---------- | ------- |
+| `GET /api/visits` | `clinical:read` | List encounters; supports patient, clinician, appointment, status, date range, and text filters |
+| `POST /api/visits` | `clinical:manage` | Create an encounter linked to a patient, clinician, and optionally an appointment |
+| `GET /api/visits/:visitId` | `clinical:read` | Read encounter and its clinical notes, prescriptions, and diagnostic reports |
+| `PATCH /api/visits/:visitId` | `clinical:manage` | Update complaint, diagnosis, clinical text, vitals, and follow-up metadata |
+| `PATCH /api/visits/:visitId/status` | `clinical:manage` | Apply an allowed encounter status transition |
+| `GET/POST /api/visits/:visitId/notes` | `clinical:read` / `clinical:manage` | List or create notes |
+| `GET/PATCH /api/visits/:visitId/notes/:noteId` | `clinical:read` / `clinical:manage` | Read a note with revision history or revise its content |
+| `GET/POST /api/visits/:visitId/prescriptions` | `clinical:read` / `clinical:manage` | List or create prescriptions with one or more items |
+| `GET /api/visits/:visitId/prescriptions/:prescriptionId` | `clinical:read` | Read a prescription and its items |
+| `PATCH /api/visits/:visitId/prescriptions/:prescriptionId/status` | `clinical:manage` | Advance or cancel prescription status |
+| `GET/POST /api/visits/:visitId/reports` | `clinical:read` / `clinical:manage` | List or create diagnostic report metadata |
+| `GET/PATCH /api/visits/:visitId/reports/:reportId` | `clinical:read` / `clinical:manage` | Read a report or update its metadata/status |
+| `GET /api/patients/:patientId/clinical-summary` | `clinical:read` | Read the patient's clinical history, prescriptions, reports, and notes |
+
+Encounter creation requires `patientId`; clinicians are linked to their own doctor profile
+automatically, while administrators must supply `doctorId`. `appointmentId` is optional and,
+when supplied, must belong to the same patient and clinician. `startedAt` records the visit
+date; `followUpAt` and `followUpNotes` capture follow-up details. Optional `vitals` include
+height, weight, temperature, blood pressure, heart rate, respiratory rate, and oxygen
+saturation. Visit status transitions are `PLANNED -> IN_PROGRESS -> COMPLETED`, with
+cancellation permitted before completion.
+
+Prescription items require `medicationName`, `dosage`, `frequency`, `durationDays` (1–730),
+and `quantity` (1–10,000); `instructions` are optional. A prescription may contain 1–20
+items and may specify `issuedAt` and prescription-level `notes`. Diagnostic reports record
+`testName`, `type`, `orderedAt`, optional result summary/details, and optional file-reference
+metadata; statuses progress from `ORDERED` to `COLLECTED`, `PROCESSING`, and `COMPLETED`,
+with cancellation allowed before completion. This API stores file metadata only, not
+uploaded file contents. Clinical notes accept `content`; updates also accept an optional
+`editReason` and preserve each material revision, including previous and replacement
+content, editor, timestamp, and reason. Status changes and clinical mutations are recorded
+in the audit log. No automated diagnosis or medical recommendations are generated.
+
 ## Audit events
 
 Management mutations write `AuditLog` records with request metadata:
@@ -251,6 +298,15 @@ Management mutations write `AuditLog` records with request metadata:
 - `DOCTOR_UNAVAILABILITY_CREATED`, `DOCTOR_UNAVAILABILITY_DELETED`
 - `APPOINTMENT_BOOKED`, `APPOINTMENT_RESCHEDULED`, `APPOINTMENT_CANCELLED`,
   `APPOINTMENT_STATUS_CHANGED`
+- `VISIT_CREATED`, `VISIT_UPDATED`, `VISIT_STATUS_CHANGED`, `VISIT_READ`, `VISIT_LIST_READ`
+- `CLINICAL_NOTE_CREATED`, `CLINICAL_NOTE_READ`, `CLINICAL_NOTE_REVISED`,
+  `CLINICAL_NOTES_LIST_READ`
+- `PRESCRIPTION_CREATED`, `PRESCRIPTION_READ`, `PRESCRIPTION_STATUS_CHANGED`,
+  `PRESCRIPTIONS_LIST_READ`
+- `DIAGNOSTIC_REPORT_CREATED`, `DIAGNOSTIC_REPORT_READ`, `DIAGNOSTIC_REPORT_UPDATED`,
+  `DIAGNOSTIC_REPORTS_LIST_READ`
+- `PATIENT_CLINICAL_SUMMARY_READ`
+- `PATIENT_CLINICAL_FIELDS_READ`, `PATIENT_CLINICAL_FIELDS_LIST_READ`
 
 Audit snapshots and metadata never include password hashes or raw tokens.
 

@@ -2,6 +2,7 @@ import type { Request, RequestHandler } from 'express';
 import { z } from 'zod';
 import { AppError } from '../../utils/errors';
 import { HTTP_STATUS } from '../../utils/http-status';
+import { getRequestMetadata } from '../../utils/request-metadata';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { getClinicalSummary, getInvoice, listUsers } from './access.service';
 
@@ -30,7 +31,11 @@ export const listUsersController: RequestHandler = async (_request, response) =>
 };
 
 export const getClinicalSummaryController: RequestHandler = async (request, response) => {
-  const summary = await getClinicalSummary(getRouteId(request, 'patientId'), getActor(request));
+  const summary = await getClinicalSummary(
+    getRouteId(request, 'patientId'),
+    getActor(request),
+    getRequestMetadata(request, response),
+  );
 
   response.setHeader('Cache-Control', 'no-store');
   response.status(HTTP_STATUS.OK).json(summary);

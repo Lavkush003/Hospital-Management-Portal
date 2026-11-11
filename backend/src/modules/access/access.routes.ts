@@ -16,7 +16,7 @@ accessRoutes.get('/admin/users', requirePermission(PERMISSIONS.USERS_MANAGE), li
 
 accessRoutes.get(
   '/patients/:patientId/clinical-summary',
-  requirePermission(PERMISSIONS.PATIENTS_CLINICAL_READ),
+  requirePermission(PERMISSIONS.CLINICAL_READ),
   getClinicalSummaryController,
 );
 

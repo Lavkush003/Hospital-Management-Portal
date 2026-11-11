@@ -28,6 +28,8 @@ const EXPECTED_MODEL_TABLES = [
   'DoctorUnavailability',
   'Appointment',
   'Visit',
+  'ClinicalNote',
+  'ClinicalNoteRevision',
   'Prescription',
   'PrescriptionItem',
   'DiagnosticReport',
@@ -54,6 +56,7 @@ const EXPECTED_CONSTRAINTS = [
   'Visit_vitals_nonnegative_check',
   'Visit_oxygen_saturation_check',
   'Visit_blood_pressure_order_check',
+  'ClinicalNoteRevision_number_check',
   'PrescriptionItem_quantity_check',
   'PrescriptionItem_duration_check',
   'DiagnosticReport_completion_time_check',
@@ -180,7 +183,7 @@ async function checkServerAndMigrations(): Promise<CheckResult> {
     ORDER BY started_at
   `;
 
-  assert.equal(migrations.length, 4, 'Expected exactly four Prisma migrations');
+  assert.equal(migrations.length, 5, 'Expected exactly five Prisma migrations');
   assert.ok(
     migrations.every(
       (migration) => migration.finished_at !== null && migration.rolled_back_at === null,

@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tools.json",
-    "test": "node --import tsx --test --test-concurrency=1 tests/auth.test.ts tests/management.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 tests/auth.test.ts tests/management.test.ts tests/clinical.test.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "db:generate": "prisma generate",
