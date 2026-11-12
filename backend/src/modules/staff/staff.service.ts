@@ -220,6 +220,14 @@ async function updateStaffRecord(
         throw staffNotFoundError();
       }
 
+      if (input.role !== undefined && current.userId === actorUserId) {
+        throw new AppError(
+          HTTP_STATUS.FORBIDDEN,
+          'Users cannot modify their own role',
+          'CANNOT_MODIFY_OWN_ROLE',
+        );
+      }
+
       if (input.departmentId) {
         const department = await transaction.department.findUnique({
           where: { id: input.departmentId },
