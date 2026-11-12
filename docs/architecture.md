@@ -7,7 +7,9 @@ The system uses a **modular monolith** with two independently built and deployed
 - `frontend`: a React single-page application served as static assets.
 - `backend`: a single Express API process connected to PostgreSQL through Prisma.
 
-There are no microservices, Firebase services, MongoDB stores, or simulated business APIs. Domain modules will be added vertically inside the existing API rather than as separate services.
+There are no microservices, Firebase services, MongoDB stores, or mock business APIs. The
+billing payment flow is simulated internally and does not call a real payment gateway. Domain
+modules are added vertically inside the existing API rather than as separate services.
 
 ```text
 Browser
@@ -147,7 +149,10 @@ The frontend validates its public environment with Zod in `src/utils/env.ts`. Fr
 
 Prisma reads `DATABASE_URL` from the backend environment. The client is created once and reused, with a development singleton guard to avoid duplicate clients during hot reload. The client is disconnected during graceful shutdown.
 
-The schema defines 20 models, 17 enums, and four committed migrations. PostgreSQL enforces the critical invariants through a `btree_gist` appointment exclusion constraint, case-insensitive email indexes, and 33 CHECK constraints. Synthetic development data is loaded through `backend/prisma/seed.ts`.
+The schema defines 22 models, 17 enums, and six committed migrations. PostgreSQL enforces
+critical invariants through a `btree_gist` appointment exclusion constraint, case-insensitive
+email indexes, and 36 CHECK constraints. Synthetic development data is loaded through
+`backend/prisma/seed.ts`.
 
 Patient, doctor, department, staff, schedule, availability, and appointment modules expose management HTTP APIs. Appointment booking, rescheduling, cancellation, and status changes run in transactions with audit records and idempotency. The availability service derives exact schedule-aligned slots while excluding breaks, leave, unavailability, and active appointments. Booking and schedule mutations lock the doctor row, and database exclusion violations map to application conflicts.
 
@@ -165,9 +170,9 @@ token use scoped cookies, and refresh/logout require a matching `X-CSRF-Token` h
 authenticate middleware reloads the user on every protected request and rejects missing
 accounts, inactive accounts, stale roles, and stale auth versions.
 
-`modules/access` retains the admin-user, clinical-summary, and invoice-read proof endpoints.
-Management modules implement patient, doctor, department, staff, schedule, availability, and
-appointment APIs. Role permissions are centralized in `auth.permissions.ts`; resource-level
+`modules/access` retains the admin-user and clinical-summary endpoints. Management modules
+implement patient, doctor, department, staff, schedule, availability, appointment, clinical,
+and billing APIs. Role permissions are centralized in `auth.permissions.ts`; resource-level
 checks additionally limit clinicians to patients they are assigned to through appointments
 or visits, to their own appointments, and to their own doctor schedules. Unauthorized
 clinician resource probes return `404` instead of revealing whether an unrelated record

@@ -1,8 +1,7 @@
 # Management API
 
 All routes are mounted under `/api` and require a Bearer access token. The management API covers patients, doctors, departments, staff, recurring schedules and
-availability, appointment booking, and clinical encounter records. Billing mutation APIs
-remain deferred.
+availability, appointment booking, clinical encounter records, and billing.
 
 This document complements [authentication.md](authentication.md), which defines session
 handling, CSRF, token errors, and the shared error envelope.
@@ -45,6 +44,7 @@ Success responses use resource envelopes such as `{ "patient": { ... } }`,
 | `clinical:read`         | Yes   | No         | Yes       |
 | `clinical:manage`       | Yes   | No         | Yes       |
 | `billing:read`          | Yes   | Yes        | No        |
+| `billing:manage`        | Yes   | Yes        | No        |
 
 Clinicians are additionally scoped to their own doctor profile for schedules and encounter
 modifications, and to patients they are assigned to through appointments or visits.
@@ -282,6 +282,57 @@ uploaded file contents. Clinical notes accept `content`; updates also accept an 
 `editReason` and preserve each material revision, including previous and replacement
 content, editor, timestamp, and reason. Status changes and clinical mutations are recorded
 in the audit log. No automated diagnosis or medical recommendations are generated.
+
+## Billing
+
+Billing routes require `billing:read` or `billing:manage`. Administrators and front-desk
+users receive both permissions; clinicians receive neither. Invoice and payment reads and
+mutations are audited. Invoice edits are allowed only while an invoice is `DRAFT` and has no
+payments; issued financial details are immutable, with changes preserved in invoice history.
+
+| Method and path | Permission | Purpose |
+| --------------- | ---------- | ------- |
+| `GET /api/billing/invoices` | `billing:read` | Paginated invoice list; filter by patient, visit, appointment, status, and invoice date |
+| `POST /api/billing/invoices` | `billing:manage` | Create a draft invoice with line items |
+| `GET /api/billing/invoices/:invoiceId` | `billing:read` | Read invoice, patient/link details, items, and payments |
+| `PATCH /api/billing/invoices/:invoiceId` | `billing:manage` | Update a draft invoice's links, dates, currency, notes, or complete item list |
+| `PATCH /api/billing/invoices/:invoiceId/status` | `billing:manage` | Issue, mark overdue, or void an invoice using valid transitions |
+| `GET /api/billing/invoices/:invoiceId/history` | `billing:read` | Read immutable audit history for the invoice and its payments |
+| `GET /api/billing/invoices/:invoiceId/payments` | `billing:read` | List pending, successful, and failed payment attempts |
+| `POST /api/billing/invoices/:invoiceId/payments` | `billing:manage` | Create a simulated pending payment attempt; requires an idempotency key |
+| `GET /api/billing/payments/:paymentId` | `billing:read` | Read payment status and reference |
+| `PATCH /api/billing/payments/:paymentId/status` | `billing:manage` | Process a pending payment as `SUCCESSFUL` or `FAILED` |
+
+Invoice creation requires `patientId`, `dueAt`, and 1–100 `items`. `visitId` and
+`appointmentId` are optional; each supplied link must belong to the same patient. Each item
+requires `description`, positive integer `quantity` (up to 1,000,000), and `unitPrice`.
+`discountAmount` and `taxAmount` are optional fixed currency amounts per line item (default
+zero); discount cannot exceed that line's gross amount. Amounts accept decimal strings or
+JSON numbers with at most two fractional digits. The backend calculates line totals and
+invoice subtotal, discount, tax, and grand total using integer cents; client-supplied totals
+are rejected. `invoiceDate` defaults to the current time, `currency` defaults to `USD`, and
+the due date cannot precede the invoice date.
+
+Invoice status transitions are `DRAFT -> ISSUED -> PARTIALLY_PAID -> PAID`. An issued or
+partially paid invoice may be marked `OVERDUE` only after its due date and while a balance
+remains. Draft, issued, partially paid, or overdue invoices can be voided only when they
+have no successful or pending payments. Partial and paid statuses are derived from successful
+payments, never manually assigned.
+
+Payment creation always records a `PENDING` attempt; it never charges a real payment
+instrument. Supply `Idempotency-Key` (8–200 characters) to prevent duplicate payment
+requests; replays return the original payment and `replayed: true`. `paymentNumber` is the
+generated payment reference; an optional `externalReference` must be unique. Processing a
+payment is a separate status update. Only a transition from `PENDING` to `SUCCESSFUL` records
+`paidAt` and applies the payment to the invoice balance. A failed payment remains failed and
+does not affect the balance. Pending amounts reserve balance; a new pending payment or
+successful processing that exceeds the unreserved invoice total is rejected.
+
+Invoice history includes invoice snapshots and related payment creation/status events. Audit
+actions include `INVOICE_CREATED`, `INVOICE_UPDATED`, `INVOICE_STATUS_CHANGED`,
+`INVOICE_PAYMENT_RECONCILED`, `PAYMENT_CREATED`, and `PAYMENT_STATUS_CHANGED`, plus
+`INVOICE_READ`, `INVOICE_LIST_READ`, `INVOICE_HISTORY_READ`, `PAYMENT_READ`, and
+`PAYMENT_LIST_READ`.
 
 ## Audit events
 

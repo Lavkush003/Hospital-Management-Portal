@@ -457,6 +457,7 @@ async function createTestData(): Promise<void> {
     data: {
       id: `${TEST_PREFIX}invoice-001`,
       invoiceNumber: 'AUTHTEST-INV-001',
+      patientId: PATIENT_IDS.assigned,
       visitId: `${TEST_PREFIX}visit-001`,
       status: 'ISSUED',
       currency: 'USD',

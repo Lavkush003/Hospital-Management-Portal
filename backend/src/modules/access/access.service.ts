@@ -1,7 +1,7 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { writeAuditLog } from '../../utils/audit';
-import { AppError } from '../../utils/errors';
-import { HTTP_STATUS } from '../../utils/http-status';
+import { hasPermission, PERMISSIONS } from '../auth/auth.permissions';
 import type { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { assertPatientAccess, patientNotFoundError } from '../patients/patient-access';
 
@@ -51,69 +51,76 @@ export async function getClinicalSummary(
 
   await assertPatientAccess(actor, patientId);
 
-  const visits = await prisma.visit.findMany({
-    where: { patientId },
-    select: {
-      id: true,
-      visitNumber: true,
-      status: true,
-      chiefComplaint: true,
-      diagnosis: true,
-      clinicalNotes: true,
-      heightCm: true,
-      weightKg: true,
-      temperatureC: true,
-      systolicBp: true,
-      diastolicBp: true,
-      heartRate: true,
-      respiratoryRate: true,
-      oxygenSaturation: true,
-      startedAt: true,
-      endedAt: true,
-      doctor: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          specialization: true,
-        },
+  const canReadBilling = hasPermission(actor.role, PERMISSIONS.BILLING_READ);
+  const visitSelect = {
+    id: true,
+    visitNumber: true,
+    status: true,
+    chiefComplaint: true,
+    diagnosis: true,
+    clinicalNotes: true,
+    heightCm: true,
+    weightKg: true,
+    temperatureC: true,
+    systolicBp: true,
+    diastolicBp: true,
+    heartRate: true,
+    respiratoryRate: true,
+    oxygenSaturation: true,
+    startedAt: true,
+    endedAt: true,
+    doctor: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        specialization: true,
       },
-      prescriptions: {
-        select: {
-          id: true,
-          prescriptionNumber: true,
-          status: true,
-          notes: true,
-          issuedAt: true,
-          items: true,
-        },
-        orderBy: { issuedAt: 'desc' },
+    },
+    prescriptions: {
+      select: {
+        id: true,
+        prescriptionNumber: true,
+        status: true,
+        notes: true,
+        issuedAt: true,
+        items: true,
       },
-      diagnosticReports: {
-        orderBy: { orderedAt: 'desc' },
-      },
-      notes: {
-        orderBy: { createdAt: 'asc' },
-        select: {
-          id: true,
-          content: true,
-          createdAt: true,
-          updatedAt: true,
-          author: {
-            select: { id: true, firstName: true, lastName: true, role: true },
-          },
-        },
-      },
-      invoice: {
-        select: {
-          id: true,
-          invoiceNumber: true,
-          status: true,
-          totalAmount: true,
-          currency: true,
+      orderBy: { issuedAt: 'desc' },
+    },
+    diagnosticReports: {
+      orderBy: { orderedAt: 'desc' },
+    },
+    notes: {
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        content: true,
+        createdAt: true,
+        updatedAt: true,
+        author: {
+          select: { id: true, firstName: true, lastName: true, role: true },
         },
       },
     },
+    ...(canReadBilling
+      ? {
+          invoices: {
+            select: {
+              id: true,
+              invoiceNumber: true,
+              status: true,
+              totalAmount: true,
+              currency: true,
+            },
+          },
+        }
+      : {}),
+  } satisfies Prisma.VisitSelect;
+
+  const visits = await prisma.visit.findMany({
+    where: { patientId },
+    select: visitSelect,
     orderBy: { startedAt: 'desc' },
     take: 100,
   });
@@ -132,54 +139,14 @@ export async function getClinicalSummary(
     request,
   });
 
-  return { patient, visits };
-}
-
-export async function getInvoice(invoiceId: string): Promise<unknown> {
-  const invoice = await prisma.invoice.findUnique({
-    where: { id: invoiceId },
-    select: {
-      id: true,
-      invoiceNumber: true,
-      status: true,
-      currency: true,
-      subtotal: true,
-      discountAmount: true,
-      taxAmount: true,
-      totalAmount: true,
-      issuedAt: true,
-      dueAt: true,
-      notes: true,
-      createdAt: true,
-      items: true,
-      payments: true,
-      visit: {
-        select: {
-          id: true,
-          visitNumber: true,
-          patient: {
-            select: {
-              id: true,
-              patientNumber: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          doctor: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (!invoice) {
-    throw new AppError(HTTP_STATUS.NOT_FOUND, 'Invoice not found', 'INVOICE_NOT_FOUND');
-  }
-
-  return invoice;
+  return {
+    patient,
+    visits: visits.map((visit) => {
+      const invoices = 'invoices' in visit ? visit.invoices : [];
+      return {
+        ...visit,
+        ...(canReadBilling ? { invoice: invoices[0] ?? null, invoices } : {}),
+      };
+    }),
+  };
 }

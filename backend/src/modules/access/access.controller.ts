@@ -4,7 +4,7 @@ import { AppError } from '../../utils/errors';
 import { HTTP_STATUS } from '../../utils/http-status';
 import { getRequestMetadata } from '../../utils/request-metadata';
 import type { AuthenticatedUser } from '../auth/auth.types';
-import { getClinicalSummary, getInvoice, listUsers } from './access.service';
+import { getClinicalSummary, listUsers } from './access.service';
 
 const routeIdSchema = z.string().min(1);
 
@@ -39,11 +39,4 @@ export const getClinicalSummaryController: RequestHandler = async (request, resp
 
   response.setHeader('Cache-Control', 'no-store');
   response.status(HTTP_STATUS.OK).json(summary);
-};
-
-export const getInvoiceController: RequestHandler = async (request, response) => {
-  const invoice = await getInvoice(getRouteId(request, 'invoiceId'));
-
-  response.setHeader('Cache-Control', 'no-store');
-  response.status(HTTP_STATUS.OK).json({ invoice });
 };

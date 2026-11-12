@@ -1,6 +1,6 @@
 # Hospital Management System
 
-Production-oriented Hospital Management System for the Algions AI Labs Full-Stack Web Development assessment. The backend implements a complete PostgreSQL/Prisma data architecture, authentication, role-based authorization, patient/doctor/department/staff management, scheduling and availability, and appointment booking. The hospital business user interface remains intentionally deferred.
+Production-oriented Hospital Management System for the Algions AI Labs Full-Stack Web Development assessment. The backend implements a complete PostgreSQL/Prisma data architecture, authentication, role-based authorization, patient/doctor/department/staff management, scheduling and availability, appointment booking, clinical records, and billing. The hospital business user interface remains intentionally deferred.
 
 ## Technology
 
@@ -19,11 +19,11 @@ Production-oriented Hospital Management System for the Algions AI Labs Full-Stac
 ├── backend/                 Express API and Prisma data layer
 │   ├── prisma/              Schema, migrations, and synthetic seed
 │   ├── scripts/             Database verification scripts
-│   ├── tests/               Authentication and management integration tests
+│   ├── tests/               Authentication, management, clinical, and billing integration tests
 │   └── src/
 │       ├── config/          Environment, logger, and Prisma clients
 │       ├── middleware/      Authentication, authorization, CSRF, and errors
-│       ├── modules/         Health, auth, patients, doctors, departments, staff, schedules, appointments, clinical records, and access
+│       ├── modules/         Health, auth, patients, doctors, departments, staff, schedules, appointments, clinical records, billing, and access
 │       ├── routes/          API route composition
 │       ├── services/        Reusable application services
 │       ├── types/           Backend-owned types
@@ -192,7 +192,7 @@ All commands are available from the repository root.
 
 ## Database architecture
 
-The Prisma schema contains 20 models:
+The Prisma schema contains 22 models:
 
 - **Identity and master data:** `User`, `Patient`, `Department`, `Doctor`, `Staff`
 - **Scheduling:** `DoctorSchedule`, `DoctorScheduleBreak`, `DoctorLeave`,
@@ -211,7 +211,8 @@ Key invariants are enforced in PostgreSQL, not only in application code:
   and fees, invoice arithmetic, line totals, positive payment amounts, schedule break and
   leave time ordering, idempotency-key expiry and response status, and refresh-token
   expiry/revocation invariants.
-- Clinical records attach to `Visit`; each visit has at most one invoice.
+- Clinical records attach to `Visit`; billing records attach to patients and may optionally
+  reference a visit and/or appointment.
 - Historical patient, doctor, and financial parents are protected with `Restrict` delete
   policies. Only owned child rows cascade.
 
@@ -262,9 +263,9 @@ This is a liveness endpoint only. It does not expose database state or sensitive
 
 The API exposes login, refresh, logout, current-session, and password-change endpoints under `/api/auth`. Access tokens are short-lived Bearer JWTs. Rotating refresh tokens and a readable CSRF token are stored in scoped cookies; refresh and logout require the `X-CSRF-Token` header. Protected endpoints enforce both role permissions and resource ownership, including clinician-only access to assigned patients, their own appointments, and their own doctor schedule.
 
-Management endpoints cover patients, doctors, departments, staff, recurring schedules and breaks, leave, unavailability, availability search, and the full appointment lifecycle. Booking, reschedule, and cancel operations support the `Idempotency-Key` header.
+Management endpoints cover patients, doctors, departments, staff, recurring schedules and breaks, leave, unavailability, availability search, appointments, clinical records, and billing. Booking, reschedule, cancel, and payment creation support the `Idempotency-Key` header.
 
-See [docs/api/authentication.md](docs/api/authentication.md) for session contracts, cookie behavior, and token errors. See [docs/api/management.md](docs/api/management.md) for management request/response contracts, RBAC, scheduling rules, appointment transitions, and error codes.
+See [docs/api/authentication.md](docs/api/authentication.md) for session contracts, cookie behavior, and token errors. See [docs/api/management.md](docs/api/management.md) for management, clinical, and billing request/response contracts, RBAC, scheduling rules, status transitions, and error codes.
 
 ## Deployment notes
 

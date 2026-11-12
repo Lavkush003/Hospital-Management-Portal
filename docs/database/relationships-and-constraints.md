@@ -5,8 +5,9 @@ transactional behavior expected from application services.
 
 ## Design principles
 
-1. **One encounter is the source of truth.** `Prescription`, `DiagnosticReport`, and
-   `Invoice` reference `Visit`, not `Appointment` or `Patient` directly.
+1. **Encounters anchor clinical records.** `Prescription` and `DiagnosticReport` reference
+   `Visit`; invoices reference `Patient` and may additionally reference a visit and/or
+   appointment.
 2. **Master records are retained.** Patients, doctors, departments, and users are
    deactivated with status fields instead of hard-deleted.
 3. **Clinical and financial history is protected.** Foreign keys use `Restrict` for
@@ -40,7 +41,9 @@ transactional behavior expected from application services.
 | `Visit -> Prescription`             | Yes      | `Restrict`      | Prescriptions must not be orphaned                     |
 | `Prescription -> PrescriptionItem`  | Yes      | `Cascade`       | Items are owned by their prescription                  |
 | `Visit -> DiagnosticReport`         | Yes      | `Restrict`      | Diagnostic history must be retained                    |
-| `Visit -> Invoice`                  | Yes      | `Restrict`      | Financial history must be retained                     |
+| `Patient -> Invoice`                | Yes      | `Restrict`      | Patient billing history must be retained               |
+| `Visit -> Invoice`                  | No       | `Restrict`      | Visit-linked invoices must retain their encounter     |
+| `Appointment -> Invoice`            | No       | `Restrict`      | Appointment-linked invoices retain their appointment  |
 | `Invoice -> InvoiceItem`            | Yes      | `Cascade`       | Items are owned by their invoice                       |
 | `Invoice -> Payment`                | Yes      | `Restrict`      | Payments must not disappear with an invoice            |
 | `User -> Payment.receivedBy`        | No       | `SetNull`       | Keep payment even if the operator account is removed   |
@@ -49,16 +52,15 @@ transactional behavior expected from application services.
 | `User -> RefreshToken`              | Yes      | `Cascade`       | Sessions belong to their account                       |
 | `RefreshToken -> replacedByToken`   | No       | `SetNull`       | Keep rotation history if a linked session is removed   |
 
-`Visit.appointmentId` and `Invoice.visitId` are both unique. The schema therefore permits
-at most one visit per appointment and exactly one invoice per visit. The application
-creates invoices through a visit, which avoids duplicate billing records for the same
-clinical encounter.
+`Visit.appointmentId` is unique, so an appointment can be linked to at most one visit.
+Invoices require a patient and may optionally link to a visit and/or appointment; multiple
+invoices may refer to the same visit.
 
 ## Custom CHECK constraints
 
 Prisma cannot express these rules in `schema.prisma`, so they are added by the
-`20261110070100_appointment_integrity`, `20261110073328_auth_refresh_tokens`, and
-`20261110080327_scheduling_availability` migrations.
+`20261110070100_appointment_integrity`, `20261110073328_auth_refresh_tokens`,
+`20261110080327_scheduling_availability`, and `20261112010000_billing_module` migrations.
 
 | Constraint                                       | Rule                                                                   |
 | ------------------------------------------------ | ---------------------------------------------------------------------- |
@@ -84,12 +86,14 @@ Prisma cannot express these rules in `schema.prisma`, so they are added by the
 | `Invoice_discount_range_check`                   | `0 <= discountAmount <= subtotal`                                      |
 | `Invoice_tax_nonnegative_check`                  | `taxAmount >= 0`                                                       |
 | `Invoice_total_calculation_check`                | `totalAmount = subtotal - discountAmount + taxAmount`                  |
-| `Invoice_issued_at_check`                        | Non-draft, non-cancelled invoices must have `issuedAt`                 |
+| `Invoice_issued_at_check`                        | Non-draft, non-void/refunded invoices must have `issuedAt`              |
 | `InvoiceItem_quantity_check`                     | `quantity > 0`                                                         |
 | `InvoiceItem_unit_price_check`                   | `unitPrice >= 0`                                                       |
-| `InvoiceItem_line_total_check`                   | `lineTotal = quantity * unitPrice`                                     |
+| `InvoiceItem_discount_range_check`               | `0 <= discountAmount <= quantity * unitPrice`                           |
+| `InvoiceItem_tax_nonnegative_check`               | `taxAmount >= 0`                                                       |
+| `InvoiceItem_line_total_check`                   | `lineTotal = quantity * unitPrice - discountAmount + taxAmount`         |
 | `Payment_amount_check`                           | `amount > 0`                                                           |
-| `Payment_completed_requires_date_check`          | A completed payment must have `paidAt`                                 |
+| `Payment_successful_requires_date_check`         | `paidAt` exists exactly when payment status is `SUCCESSFUL`             |
 | `IdempotencyKey_expiry_check`                    | `expiresAt > createdAt`                                                |
 | `IdempotencyKey_response_status_check`           | `responseStatusCode IS NULL OR responseStatusCode BETWEEN 100 AND 599` |
 | `RefreshToken_expiry_check`                      | `expiresAt > createdAt`                                                |

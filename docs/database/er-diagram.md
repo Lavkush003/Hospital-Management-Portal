@@ -24,11 +24,13 @@ erDiagram
   APPOINTMENT |o--o| VISIT : "may become"
   PATIENT ||--o{ VISIT : "attends"
   DOCTOR ||--o{ VISIT : "documents"
+  PATIENT ||--o{ INVOICE : "is billed"
+  APPOINTMENT |o--o{ INVOICE : "may be billed"
 
   VISIT ||--o{ PRESCRIPTION : "issues"
   PRESCRIPTION ||--o{ PRESCRIPTION_ITEM : "contains"
   VISIT ||--o{ DIAGNOSTIC_REPORT : "orders"
-  VISIT ||--o| INVOICE : "is billed by"
+  VISIT ||--o{ INVOICE : "may be billed"
 
   INVOICE ||--o{ INVOICE_ITEM : "contains"
   INVOICE ||--o{ PAYMENT : "is settled by"
@@ -185,13 +187,16 @@ erDiagram
   INVOICE {
     string id PK
     string invoiceNumber UK
+    string patientId FK
     string visitId FK
+    string appointmentId FK
     string status
     string currency
     decimal subtotal
     decimal discountAmount
     decimal taxAmount
     decimal totalAmount
+    datetime invoiceDate
     datetime issuedAt
     datetime dueAt
   }
@@ -202,6 +207,8 @@ erDiagram
     string description
     int quantity
     decimal unitPrice
+    decimal discountAmount
+    decimal taxAmount
     decimal lineTotal
   }
 
@@ -211,7 +218,7 @@ erDiagram
     string invoiceId FK
     decimal amount
     string method
-    string status
+    string status "PENDING/SUCCESSFUL/FAILED"
     string receivedById FK
     datetime paidAt
     string externalReference UK
@@ -283,7 +290,9 @@ erDiagram
 | `Prescription.visitId`            | `Visit`          | Exactly one visit              | `Restrict` |
 | `PrescriptionItem.prescriptionId` | `Prescription`   | Exactly one prescription       | `Cascade`  |
 | `DiagnosticReport.visitId`        | `Visit`          | Exactly one visit              | `Restrict` |
-| `Invoice.visitId`                 | `Visit`          | Exactly one visit, unique      | `Restrict` |
+| `Invoice.patientId`               | `Patient`        | Exactly one patient, required  | `Restrict` |
+| `Invoice.visitId`                 | `Visit`          | Zero or one visit              | `Restrict` |
+| `Invoice.appointmentId`           | `Appointment`    | Zero or one appointment        | `Restrict` |
 | `InvoiceItem.invoiceId`           | `Invoice`        | Exactly one invoice            | `Cascade`  |
 | `Payment.invoiceId`               | `Invoice`        | Exactly one invoice            | `Restrict` |
 | `Payment.receivedById`            | `User`           | Zero or one receiving user     | `SetNull`  |

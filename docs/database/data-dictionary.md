@@ -43,9 +43,9 @@ API serializes them as `HH:mm`.
 | `PrescriptionStatus`     | `ISSUED`, `DISPENSED`, `CANCELLED`                                                                                          | `Prescription.status`      |
 | `DiagnosticReportType`   | `LABORATORY`, `IMAGING`, `PATHOLOGY`, `OTHER`                                                                               | `DiagnosticReport.type`    |
 | `DiagnosticReportStatus` | `ORDERED`, `COLLECTED`, `PROCESSING`, `COMPLETED`, `CANCELLED`                                                              | `DiagnosticReport.status`  |
-| `InvoiceStatus`          | `DRAFT`, `ISSUED`, `PARTIALLY_PAID`, `PAID`, `CANCELLED`, `REFUNDED`                                                        | `Invoice.status`           |
+| `InvoiceStatus`          | `DRAFT`, `ISSUED`, `PARTIALLY_PAID`, `PAID`, `VOID`, `OVERDUE`, legacy `REFUNDED`                                             | `Invoice.status`           |
 | `PaymentMethod`          | `CASH`, `CARD`, `BANK_TRANSFER`, `MOBILE_MONEY`, `INSURANCE`, `OTHER`                                                       | `Payment.method`           |
-| `PaymentStatus`          | `PENDING`, `COMPLETED`, `FAILED`, `REFUNDED`                                                                                | `Payment.status`           |
+| `PaymentStatus`          | `PENDING`, `SUCCESSFUL`, `FAILED`, legacy `REFUNDED`                                                                        | `Payment.status`           |
 | `IdempotencyStatus`      | `PENDING`, `COMPLETED`, `FAILED`                                                                                            | `IdempotencyKey.status`    |
 
 ## User
@@ -371,26 +371,30 @@ CHECKs: `DiagnosticReport_completion_time_check`,
 
 ## Invoice
 
-The single invoice associated with a completed or in-progress visit.
+An invoice associated with a patient and optionally with a visit and/or appointment.
 
 | Field            | Database type    | Attributes / default       | Description                                      |
 | ---------------- | ---------------- | -------------------------- | ------------------------------------------------ |
 | `id`             | `text`           | PK, `cuid()`               | Primary identifier                               |
 | `invoiceNumber`  | `varchar(32)`    | UQ                         | Human-readable invoice number                    |
-| `visitId`        | `text`           | FK, UQ                     | Billed visit                                     |
+| `patientId`      | `text`           | FK, required               | Patient being billed                             |
+| `visitId`        | `text`           | FK, nullable               | Optionally billed visit                          |
+| `appointmentId`  | `text`           | FK, nullable               | Optionally billed appointment                    |
 | `status`         | `InvoiceStatus`  | Default `DRAFT`            | Invoice lifecycle status                         |
 | `currency`       | `varchar(3)`     | Default `USD`              | ISO 4217 currency code                           |
 | `subtotal`       | `numeric(12,2)`  | Required, `>= 0`           | Sum before discount and tax                      |
 | `discountAmount` | `numeric(12,2)`  | Default `0`, `0..subtotal` | Discount applied                                 |
 | `taxAmount`      | `numeric(12,2)`  | Default `0`, `>= 0`        | Tax applied                                      |
 | `totalAmount`    | `numeric(12,2)`  | Required                   | Must equal subtotal minus discount plus tax      |
-| `issuedAt`       | `timestamptz(3)` | Nullable                   | Issue timestamp; required unless draft/cancelled |
+| `invoiceDate`    | `timestamptz(3)` | Default `now()`            | Invoice date                                     |
+| `issuedAt`       | `timestamptz(3)` | Nullable                   | Issue timestamp                                  |
 | `dueAt`          | `timestamptz(3)` | Nullable                   | Payment due timestamp                            |
 | `notes`          | `text`           | Nullable                   | Billing notes                                    |
 | `createdAt`      | `timestamptz(3)` | Default `now()`            | Creation timestamp                               |
 | `updatedAt`      | `timestamptz(3)` | `@updatedAt`               | Last update timestamp                            |
 
-Indexes: `(status, issuedAt)`, `(dueAt)`.
+Indexes: `(patientId, invoiceDate)`, `(visitId)`, `(appointmentId)`, `(status, issuedAt)`,
+`(dueAt)`. A visit may have multiple invoices.
 CHECKs: `Invoice_subtotal_nonnegative_check`, `Invoice_discount_range_check`,
 `Invoice_tax_nonnegative_check`, `Invoice_total_calculation_check`,
 `Invoice_issued_at_check`.
@@ -399,23 +403,26 @@ CHECKs: `Invoice_subtotal_nonnegative_check`, `Invoice_discount_range_check`,
 
 One charge line on an invoice.
 
-| Field         | Database type    | Attributes / default | Description                       |
-| ------------- | ---------------- | -------------------- | --------------------------------- |
-| `id`          | `text`           | PK, `cuid()`         | Primary identifier                |
-| `invoiceId`   | `text`           | FK                   | Parent invoice                    |
-| `description` | `varchar(300)`   | Required             | Charge description                |
-| `quantity`    | `integer`        | Required, `> 0`      | Quantity billed                   |
-| `unitPrice`   | `numeric(12,2)`  | Required, `>= 0`     | Price per unit                    |
-| `lineTotal`   | `numeric(12,2)`  | Required             | Must equal `quantity * unitPrice` |
-| `createdAt`   | `timestamptz(3)` | Default `now()`      | Creation timestamp                |
-| `updatedAt`   | `timestamptz(3)` | `@updatedAt`         | Last update timestamp             |
+| Field            | Database type    | Attributes / default | Description                                                       |
+| ---------------- | ---------------- | -------------------- | ----------------------------------------------------------------- |
+| `id`             | `text`           | PK, `cuid()`         | Primary identifier                                                |
+| `invoiceId`      | `text`           | FK                   | Parent invoice                                                    |
+| `description`    | `varchar(300)`   | Required             | Charge description                                                |
+| `quantity`       | `integer`        | Required, `> 0`      | Quantity billed                                                   |
+| `unitPrice`      | `numeric(12,2)`  | Required, `>= 0`     | Price per unit                                                     |
+| `discountAmount` | `numeric(12,2)`  | Default `0`          | Fixed line discount                                               |
+| `taxAmount`      | `numeric(12,2)`  | Default `0`          | Fixed line tax                                                     |
+| `lineTotal`      | `numeric(12,2)`  | Required             | `quantity * unitPrice - discountAmount + taxAmount`               |
+| `createdAt`      | `timestamptz(3)` | Default `now()`      | Creation timestamp                                                |
+| `updatedAt`      | `timestamptz(3)` | `@updatedAt`         | Last update timestamp                                             |
 
 Index: `(invoiceId)`. CHECKs: `InvoiceItem_quantity_check`,
-`InvoiceItem_unit_price_check`, `InvoiceItem_line_total_check`.
+`InvoiceItem_unit_price_check`, `InvoiceItem_discount_range_check`,
+`InvoiceItem_tax_nonnegative_check`, `InvoiceItem_line_total_check`.
 
 ## Payment
 
-A payment attempt or completed receipt against an invoice. An invoice can have multiple
+A pending, successful, or failed payment attempt against an invoice. An invoice can have multiple
 payments for partial settlement.
 
 | Field               | Database type    | Attributes / default | Description                                   |
@@ -427,14 +434,14 @@ payments for partial settlement.
 | `method`            | `PaymentMethod`  | Required             | Payment method                                |
 | `status`            | `PaymentStatus`  | Default `PENDING`    | Payment lifecycle status                      |
 | `receivedById`      | `text`           | FK, nullable         | User who recorded the payment                 |
-| `paidAt`            | `timestamptz(3)` | Nullable             | Completion timestamp; required when completed |
+| `paidAt`            | `timestamptz(3)` | Nullable             | Timestamp; set only for successful payments  |
 | `externalReference` | `varchar(120)`   | UQ, nullable         | Gateway or bank reference                     |
 | `notes`             | `text`           | Nullable             | Payment notes                                 |
 | `createdAt`         | `timestamptz(3)` | Default `now()`      | Creation timestamp                            |
 | `updatedAt`         | `timestamptz(3)` | `@updatedAt`         | Last update timestamp                         |
 
 Indexes: `(invoiceId, status)`, `(paidAt)`, `(receivedById)`.
-CHECKs: `Payment_amount_check`, `Payment_completed_requires_date_check`.
+CHECKs: `Payment_amount_check`, `Payment_successful_requires_date_check`.
 
 ## AuditLog
 

@@ -19,6 +19,7 @@ export const PERMISSIONS = {
   CLINICAL_READ: 'clinical:read',
   CLINICAL_MANAGE: 'clinical:manage',
   BILLING_READ: 'billing:read',
+  BILLING_MANAGE: 'billing:manage',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -43,6 +44,7 @@ const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {
     PERMISSIONS.CLINICAL_READ,
     PERMISSIONS.CLINICAL_MANAGE,
     PERMISSIONS.BILLING_READ,
+    PERMISSIONS.BILLING_MANAGE,
   ]),
   FRONT_DESK: new Set<Permission>([
     PERMISSIONS.PATIENTS_CREATE,
@@ -54,6 +56,7 @@ const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {
     PERMISSIONS.APPOINTMENTS_MANAGE,
     PERMISSIONS.SCHEDULES_READ,
     PERMISSIONS.BILLING_READ,
+    PERMISSIONS.BILLING_MANAGE,
   ]),
   CLINICIAN: new Set<Permission>([
     PERMISSIONS.PATIENTS_READ,

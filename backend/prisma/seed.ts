@@ -780,6 +780,7 @@ async function seed(): Promise<void> {
     {
       id: 'seed-invoice-001',
       invoiceNumber: 'SEED-INV-001',
+      patientId: 'seed-patient-001',
       visitId: 'seed-visit-001',
       status: 'PAID',
       currency: 'USD',
@@ -794,6 +795,7 @@ async function seed(): Promise<void> {
     {
       id: 'seed-invoice-002',
       invoiceNumber: 'SEED-INV-002',
+      patientId: 'seed-patient-002',
       visitId: 'seed-visit-002',
       status: 'PARTIALLY_PAID',
       currency: 'USD',
@@ -808,6 +810,7 @@ async function seed(): Promise<void> {
     {
       id: 'seed-invoice-003',
       invoiceNumber: 'SEED-INV-003',
+      patientId: 'seed-patient-004',
       visitId: 'seed-visit-003',
       status: 'ISSUED',
       currency: 'USD',
@@ -870,7 +873,7 @@ async function seed(): Promise<void> {
       invoiceId: 'seed-invoice-001',
       amount: '198.00',
       method: 'CARD',
-      status: 'COMPLETED',
+      status: 'SUCCESSFUL',
       receivedById: 'seed-user-frontdesk',
       paidAt: utcDay(-14, 9, 40),
       externalReference: 'SEED-CARD-001',
@@ -882,7 +885,7 @@ async function seed(): Promise<void> {
       invoiceId: 'seed-invoice-002',
       amount: '100.00',
       method: 'CASH',
-      status: 'COMPLETED',
+      status: 'SUCCESSFUL',
       receivedById: 'seed-user-frontdesk',
       paidAt: utcDay(-10, 10, 40),
       notes: 'Partial cash payment for development data.',

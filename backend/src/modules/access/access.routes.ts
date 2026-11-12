@@ -4,7 +4,6 @@ import { requirePermission } from '../../middleware/authorize';
 import { PERMISSIONS } from '../auth/auth.permissions';
 import {
   getClinicalSummaryController,
-  getInvoiceController,
   listUsersController,
 } from './access.controller';
 
@@ -18,10 +17,4 @@ accessRoutes.get(
   '/patients/:patientId/clinical-summary',
   requirePermission(PERMISSIONS.CLINICAL_READ),
   getClinicalSummaryController,
-);
-
-accessRoutes.get(
-  '/billing/invoices/:invoiceId',
-  requirePermission(PERMISSIONS.BILLING_READ),
-  getInvoiceController,
 );

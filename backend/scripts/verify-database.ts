@@ -68,9 +68,11 @@ const EXPECTED_CONSTRAINTS = [
   'Invoice_issued_at_check',
   'InvoiceItem_quantity_check',
   'InvoiceItem_unit_price_check',
+  'InvoiceItem_discount_range_check',
+  'InvoiceItem_tax_nonnegative_check',
   'InvoiceItem_line_total_check',
   'Payment_amount_check',
-  'Payment_completed_requires_date_check',
+  'Payment_successful_requires_date_check',
   'IdempotencyKey_expiry_check',
   'IdempotencyKey_response_status_check',
   'RefreshToken_expiry_check',
@@ -183,7 +185,7 @@ async function checkServerAndMigrations(): Promise<CheckResult> {
     ORDER BY started_at
   `;
 
-  assert.equal(migrations.length, 5, 'Expected exactly five Prisma migrations');
+  assert.equal(migrations.length, 6, 'Expected exactly six Prisma migrations');
   assert.ok(
     migrations.every(
       (migration) => migration.finished_at !== null && migration.rolled_back_at === null,
