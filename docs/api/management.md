@@ -361,6 +361,30 @@ Management mutations write `AuditLog` records with request metadata:
 
 Audit snapshots and metadata never include password hashes or raw tokens.
 
+## Analytics and audit log
+
+These administrative endpoints require `users:manage` (administrator only):
+
+| Method and path                  | Notes |
+| -------------------------------- | ----- |
+| `GET /api/admin/analytics`       | Dashboard totals, daily appointments, billing totals, and doctor utilization |
+| `GET /api/admin/reports`         | Daily/monthly, department/doctor, billing, payment, and outstanding invoice reports |
+| `GET /api/admin/audit-logs`      | Paginated audit events with outcome and resource/request metadata |
+
+Analytics and report requests require ISO timestamps `from` and `to`; `to` must be on or
+after `from`, and the interval cannot exceed 366 days. Reports also accept `page`,
+`pageSize`, and `search` (for the outstanding invoice list). Audit log requests accept
+`page`, `pageSize`, `from`, `to`, `action`, `entityType`, `actorUserId`, `search`, and
+`outcome` (`SUCCESS` or `FAILURE`).
+
+Dashboard and report totals are calculated from PostgreSQL records rather than client-side
+page samples. Financial totals are separated by currency. Audit events record the actor,
+action, resource, outcome, timestamp, and available request metadata. The audit-log listing
+does not return raw before/after snapshots or metadata, preventing clinical content from
+being exposed through the log UI. Authentication failure events omit attempted passwords,
+tokens, and unknown-account email addresses. The Reports page exports aggregate summaries
+to CSV; patient-level outstanding invoice rows are not included in that export.
+
 ## Verification
 
 Management integration tests are in `backend/tests/management.test.ts` and run with the auth

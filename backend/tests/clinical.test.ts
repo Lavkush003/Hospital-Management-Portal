@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { config as loadDotenv } from 'dotenv';
+
+loadDotenv({ path: resolve(__dirname, '../.env'), quiet: true });
 
 const TEST_PASSWORD = 'Clinical-Test-Password-2026!';
 const RUN_ID = Date.now().toString(36).toLowerCase();
@@ -1092,7 +1096,7 @@ test('manages diagnostic reports with metadata, files, and status flow', async (
   assert.equal((list.body as { reports: unknown[] }).reports.length, 2);
 });
 
-test('records clinical audit events including sensitive reads', async () => {
+test('records clinical audit events without persisting sensitive clinical content', async () => {
   const visits = await prisma.visit.findMany({
     where: { patientId: assignedPatientId },
     select: { id: true },
@@ -1112,6 +1116,7 @@ test('records clinical audit events including sensitive reads', async () => {
   assert.ok(visitActions.has('CLINICAL_NOTES_LIST_READ'));
   assert.ok(visitActions.has('PRESCRIPTIONS_LIST_READ'));
   assert.ok(visitActions.has('DIAGNOSTIC_REPORTS_LIST_READ'));
+  assert.ok(visitAudits.every((audit) => audit.before === null && audit.after === null));
 
   const visitListAudits = await prisma.auditLog.findMany({
     where: { entityType: 'VisitQuery', action: 'VISIT_LIST_READ' },
@@ -1139,8 +1144,9 @@ test('records clinical audit events including sensitive reads', async () => {
 
   const revisionAudit = noteAudits.find((audit) => audit.action === 'CLINICAL_NOTE_REVISED');
   assert.ok(revisionAudit);
-  assert.ok((revisionAudit.before as { content?: string }).content);
-  assert.ok((revisionAudit.after as { content?: string }).content);
+  assert.equal(revisionAudit.before, null);
+  assert.equal(revisionAudit.after, null);
+  assert.ok((revisionAudit.metadata as { revisionNumber?: number }).revisionNumber);
 
   const prescriptions = await prisma.prescription.findMany({
     where: { visit: { patientId: assignedPatientId } },
@@ -1164,8 +1170,8 @@ test('records clinical audit events including sensitive reads', async () => {
     (audit) => audit.action === 'PRESCRIPTION_CREATED',
   );
   assert.ok(createdPrescriptionAudit);
-  const items = (createdPrescriptionAudit.after as { items?: unknown[] }).items;
-  assert.ok(Array.isArray(items) && items.length > 0, 'Prescription audit must record item details');
+  assert.equal(createdPrescriptionAudit.after, null);
+  assert.ok((createdPrescriptionAudit.metadata as { itemCount?: number }).itemCount);
 
   const reports = await prisma.diagnosticReport.findMany({
     where: { visit: { patientId: assignedPatientId } },
@@ -1184,6 +1190,7 @@ test('records clinical audit events including sensitive reads', async () => {
   assert.ok(reportActions.has('DIAGNOSTIC_REPORT_CREATED'));
   assert.ok(reportActions.has('DIAGNOSTIC_REPORT_UPDATED'));
   assert.ok(reportActions.has('DIAGNOSTIC_REPORT_READ'), 'Sensitive report reads must be audited');
+  assert.ok(reportAudits.every((audit) => audit.before === null && audit.after === null));
 
   const summaryAudit = await prisma.auditLog.findFirst({
     where: {

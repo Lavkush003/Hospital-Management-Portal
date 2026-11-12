@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -15,6 +15,8 @@ const CSRF_COOKIE = 'hms_csrf_token';
 const JWT_ISSUER = 'hospital-management-api';
 const JWT_AUDIENCE = 'hospital-management-client';
 const CREATED_PATIENT_EMAIL = 'authtest-created@example.test';
+const REGISTERED_PATIENT_EMAIL = 'authtest-signup@example.test';
+const EXISTING_PATIENT_EMAIL = 'authtest-existing-patient@example.test';
 const testStartedAt = new Date();
 
 const USER_IDS = {
@@ -47,6 +49,7 @@ interface SessionBody {
     email: string;
     role: string;
     status: string;
+    patientId?: string;
     passwordHash?: string;
   };
 }
@@ -238,16 +241,29 @@ async function loginAs(email: string, password = TEST_PASSWORD): Promise<ApiClie
 
 async function cleanupTestData(): Promise<void> {
   const userRows = await prisma.user.findMany({
-    where: { id: { startsWith: TEST_PREFIX } },
+    where: {
+      OR: [{ id: { startsWith: TEST_PREFIX } }, { email: REGISTERED_PATIENT_EMAIL }],
+    },
     select: { id: true },
   });
   const userIds = userRows.map((user) => user.id);
+  const patientRows = await prisma.patient.findMany({
+    where: {
+      OR: [
+        { id: { startsWith: TEST_PREFIX } },
+        { email: { in: [CREATED_PATIENT_EMAIL, REGISTERED_PATIENT_EMAIL, EXISTING_PATIENT_EMAIL] } },
+      ],
+    },
+    select: { id: true },
+  });
+  const patientIds = patientRows.map((patient) => patient.id);
 
   await prisma.auditLog.deleteMany({
     where: {
       OR: [
         { actorUserId: { in: userIds } },
         { entityId: { startsWith: TEST_PREFIX } },
+        { entityId: { in: patientIds } },
         {
           AND: [{ createdAt: { gte: testStartedAt } }, { action: { startsWith: 'AUTH_' } }],
         },
@@ -276,11 +292,16 @@ async function cleanupTestData(): Promise<void> {
     where: { id: { startsWith: TEST_PREFIX } },
   });
   await prisma.user.deleteMany({
-    where: { id: { startsWith: TEST_PREFIX } },
+    where: {
+      OR: [{ id: { startsWith: TEST_PREFIX } }, { email: REGISTERED_PATIENT_EMAIL }],
+    },
   });
   await prisma.patient.deleteMany({
     where: {
-      OR: [{ id: { startsWith: TEST_PREFIX } }, { email: CREATED_PATIENT_EMAIL }],
+      OR: [
+        { id: { startsWith: TEST_PREFIX } },
+        { email: { in: [CREATED_PATIENT_EMAIL, REGISTERED_PATIENT_EMAIL, EXISTING_PATIENT_EMAIL] } },
+      ],
     },
   });
   await prisma.department.deleteMany({
@@ -361,6 +382,7 @@ async function createTestData(): Promise<void> {
       firstName: 'Authtest',
       lastName: 'Assigned',
       dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+      email: EXISTING_PATIENT_EMAIL,
       status: 'ACTIVE',
     },
     {
@@ -571,6 +593,75 @@ test('logs in each role with secure session cookies', async () => {
     assert.equal(me.status, 200);
     assert.equal((me.body as { user: { id: string } }).user.id, userId);
   }
+});
+
+test('registers patient accounts and restricts access to the linked profile', async () => {
+  const anonymous = new ApiClient();
+  const registration = await anonymous.request('/auth/register', {
+    method: 'POST',
+    body: {
+      firstName: 'New',
+      lastName: 'Patient',
+      dateOfBirth: '1990-04-12',
+      email: REGISTERED_PATIENT_EMAIL,
+      password: 'Authtest-Patient-Password-2026!',
+    },
+  });
+  assert.equal(registration.status, 201, JSON.stringify(registration.body));
+  assert.equal(anonymous.lastSetCookies.length, 0);
+
+  const patient = await loginAs(
+    REGISTERED_PATIENT_EMAIL,
+    'Authtest-Patient-Password-2026!',
+  );
+  const profileId = (await patient.request('/auth/me')).body as {
+    user: { role: string; patientId?: string };
+  };
+  assert.equal(profileId.user.role, 'PATIENT');
+  assert.ok(profileId.user.patientId);
+
+  const ownProfile = await patient.request(`/patients/${profileId.user.patientId}`);
+  assert.equal(ownProfile.status, 200);
+  const ownPatient = (ownProfile.body as { patient: Record<string, unknown> }).patient;
+  assert.equal(ownPatient.email, REGISTERED_PATIENT_EMAIL);
+  assert.equal('allergies' in ownPatient, false);
+  assert.equal('notes' in ownPatient, false);
+
+  const list = await patient.request('/patients?page=1&pageSize=20');
+  assert.equal(list.status, 200);
+  const records = (list.body as { patients: Array<{ id: string }> }).patients;
+  assert.deepEqual(records.map((record) => record.id), [profileId.user.patientId]);
+
+  assertError(
+    await patient.request(`/patients/${PATIENT_IDS.assigned}`),
+    404,
+    'PATIENT_NOT_FOUND',
+  );
+  assertError(await patient.request('/appointments?page=1&pageSize=20'), 403, 'FORBIDDEN');
+
+  const duplicate = await anonymous.request('/auth/register', {
+    method: 'POST',
+    body: {
+      firstName: 'Other',
+      lastName: 'Person',
+      dateOfBirth: '1990-04-12',
+      email: REGISTERED_PATIENT_EMAIL,
+      password: 'Authtest-Patient-Password-2026!',
+    },
+  });
+  assertError(duplicate, 409, 'REGISTRATION_CONFLICT');
+
+  const existingRecordEmail = await anonymous.request('/auth/register', {
+    method: 'POST',
+    body: {
+      firstName: 'Assigned',
+      lastName: 'Patient',
+      dateOfBirth: '1990-04-12',
+      email: EXISTING_PATIENT_EMAIL,
+      password: 'Authtest-Patient-Password-2026!',
+    },
+  });
+  assertError(existingRecordEmail, 409, 'REGISTRATION_CONFLICT');
 });
 
 test('rejects invalid credentials and inactive accounts generically', async () => {
@@ -918,6 +1009,7 @@ test('records authentication audit events without token material', async () => {
       action: {
         in: [
           'AUTH_LOGIN_SUCCEEDED',
+          'AUTH_LOGIN_FAILED',
           'AUTH_REFRESH_ROTATED',
           'AUTH_REFRESH_REUSE_DETECTED',
           'AUTH_LOGOUT',
@@ -928,11 +1020,13 @@ test('records authentication audit events without token material', async () => {
     select: {
       action: true,
       metadata: true,
+      outcome: true,
     },
   });
   const actions = new Set(auditLogs.map((log) => log.action));
 
   assert.ok(actions.has('AUTH_LOGIN_SUCCEEDED'));
+  assert.ok(actions.has('AUTH_LOGIN_FAILED'));
   assert.ok(actions.has('AUTH_REFRESH_ROTATED'));
   assert.ok(actions.has('AUTH_REFRESH_REUSE_DETECTED'));
   assert.ok(actions.has('AUTH_LOGOUT'));
@@ -941,4 +1035,142 @@ test('records authentication audit events without token material', async () => {
   const serializedMetadata = JSON.stringify(auditLogs.map((log) => log.metadata));
   assert.equal(serializedMetadata.includes(TEST_PASSWORD), false);
   assert.equal(serializedMetadata.includes(NEW_PASSWORD), false);
+  assert.ok(auditLogs.some((log) => log.action === 'AUTH_LOGIN_FAILED' && log.outcome === 'FAILURE'));
+});
+
+test('serves date-filtered analytics and restricts reports and audit logs to admins', async () => {
+  const admin = await loginAs('authtest-admin@example.test');
+  const frontDesk = await loginAs('authtest-frontdesk@example.test');
+  const now = new Date();
+  const from = new Date(now.getTime() - 7 * 86_400_000);
+  const to = now;
+  const query = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+
+  const analyticsResponse = await admin.request(`/admin/analytics?${query}`);
+  assert.equal(analyticsResponse.status, 200, JSON.stringify(analyticsResponse.body));
+  const analytics = analyticsResponse.body as {
+    totals: { appointments: number; registeredPatients: number; doctors: number };
+    dailyAppointments: Array<{ total: number }>;
+  };
+  assert.equal(analytics.totals.registeredPatients, await prisma.patient.count());
+  assert.equal(analytics.totals.doctors, await prisma.doctor.count());
+  const expectedAppointments = await prisma.appointment.count({
+    where: { scheduledStart: { gte: from, lte: to } },
+  });
+  assert.equal(analytics.totals.appointments, expectedAppointments);
+
+  const reportsResponse = await admin.request(`/admin/reports?${query}`);
+  assert.equal(reportsResponse.status, 200, JSON.stringify(reportsResponse.body));
+  const reports = reportsResponse.body as {
+    dailyAppointments: Array<{ total: number }>;
+    monthlyAppointments: Array<{ total: number }>;
+    financialsByCurrency: Array<{
+      currency: string;
+      invoicedAmount: string;
+      outstandingBalance: string;
+      successfulPaymentAmount: string;
+    }>;
+  };
+  assert.equal(
+    reports.dailyAppointments.reduce((total, row) => total + row.total, 0),
+    expectedAppointments,
+  );
+  assert.ok(Array.isArray(reports.monthlyAppointments));
+  assert.equal(
+    reports.monthlyAppointments.reduce((total, row) => total + row.total, 0),
+    expectedAppointments,
+  );
+
+  const financialFrom = new Date(now.getTime() - 365 * 86_400_000);
+  const financialQuery = new URLSearchParams({
+    from: financialFrom.toISOString(),
+    to: to.toISOString(),
+  });
+  const financialReportResponse = await admin.request(`/admin/reports?${financialQuery}`);
+  assert.equal(financialReportResponse.status, 200, JSON.stringify(financialReportResponse.body));
+  const financialReport = financialReportResponse.body as typeof reports;
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      invoiceDate: { gte: financialFrom, lte: to },
+      status: { notIn: ['DRAFT', 'VOID', 'REFUNDED'] },
+    },
+    select: {
+      currency: true,
+      totalAmount: true,
+      payments: { where: { status: 'SUCCESSFUL' }, select: { amount: true } },
+    },
+  });
+  const payments = await prisma.payment.findMany({
+    where: {
+      status: 'SUCCESSFUL',
+      OR: [
+        { paidAt: { gte: financialFrom, lte: to } },
+        { paidAt: null, createdAt: { gte: financialFrom, lte: to } },
+      ],
+    },
+    select: { amount: true, invoice: { select: { currency: true } } },
+  });
+  const expectedFinancials = new Map<
+    string,
+    { invoiced: Prisma.Decimal; outstanding: Prisma.Decimal; paid: Prisma.Decimal }
+  >();
+  const getFinancials = (currency: string) => {
+    const current = expectedFinancials.get(currency) ?? {
+      invoiced: new Prisma.Decimal(0),
+      outstanding: new Prisma.Decimal(0),
+      paid: new Prisma.Decimal(0),
+    };
+    expectedFinancials.set(currency, current);
+    return current;
+  };
+  for (const invoice of invoices) {
+    const totals = getFinancials(invoice.currency);
+    const successfulPayments = invoice.payments.reduce(
+      (amount, payment) => amount.add(payment.amount),
+      new Prisma.Decimal(0),
+    );
+    totals.invoiced = totals.invoiced.add(invoice.totalAmount);
+    const balance = invoice.totalAmount.sub(successfulPayments);
+    if (balance.gt(0)) totals.outstanding = totals.outstanding.add(balance);
+  }
+  for (const payment of payments) {
+    const totals = getFinancials(payment.invoice.currency);
+    totals.paid = totals.paid.add(payment.amount);
+  }
+  assert.deepEqual(
+    financialReport.financialsByCurrency,
+    [...expectedFinancials.entries()]
+      .sort(([currencyA], [currencyB]) => currencyA.localeCompare(currencyB))
+      .map(([currency, totals]) => ({
+        currency,
+        invoicedAmount: totals.invoiced.toFixed(2),
+        outstandingBalance: totals.outstanding.toFixed(2),
+        successfulPaymentAmount: totals.paid.toFixed(2),
+      })),
+  );
+
+  for (const path of [`/admin/analytics?${query}`, `/admin/reports?${query}`, '/admin/audit-logs']) {
+    assertError(await frontDesk.request(path), 403, 'FORBIDDEN');
+  }
+
+  const auditQuery = new URLSearchParams({
+    from: testStartedAt.toISOString(),
+    to: new Date().toISOString(),
+    outcome: 'FAILURE',
+    search: 'AUTH_LOGIN_FAILED',
+    page: '1',
+    pageSize: '100',
+  });
+  const auditResponse = await admin.request(`/admin/audit-logs?${auditQuery}`);
+  assert.equal(auditResponse.status, 200, JSON.stringify(auditResponse.body));
+  const auditLogs = (auditResponse.body as { logs: Array<Record<string, unknown>> }).logs;
+  assert.ok(auditLogs.length > 0);
+  assert.ok(auditLogs.every((log) => log.outcome === 'FAILURE'));
+  assert.ok(auditLogs.every((log) => !('before' in log) && !('after' in log) && !('metadata' in log)));
+
+  const invalidRange = new URLSearchParams({
+    from: to.toISOString(),
+    to: from.toISOString(),
+  });
+  assert.equal((await admin.request(`/admin/reports?${invalidRange}`)).status, 400);
 });

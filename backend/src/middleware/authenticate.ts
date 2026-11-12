@@ -70,6 +70,7 @@ export const authenticate: RequestHandler = async (request, _response, next) => 
         authVersion: true,
         doctor: { select: { id: true } },
         staff: { select: { id: true } },
+        patient: { select: { id: true } },
       },
     });
 
@@ -110,6 +111,7 @@ export const authenticate: RequestHandler = async (request, _response, next) => 
         createdAt: user.createdAt,
         doctorId: user.doctor?.id ?? null,
         staffId: user.staff?.id ?? null,
+        patientId: user.patient?.id ?? null,
         authVersion: user.authVersion,
       },
       tokenId: claims.jti,

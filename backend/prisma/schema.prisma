@@ -11,6 +11,7 @@ enum UserRole {
   ADMIN
   FRONT_DESK
   CLINICIAN
+  PATIENT
 }
 
 enum UserStatus {
@@ -137,6 +138,11 @@ enum IdempotencyStatus {
   FAILED
 }
 
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String     @unique @db.VarChar(320)
@@ -154,6 +160,7 @@ model User {
 
   doctor                  Doctor?
   staff                   Staff?
+  patient                 Patient?
   refreshTokens           RefreshToken[]
   auditLogs               AuditLog[]       @relation("AuditActor")
   createdAppointments     Appointment[]    @relation("AppointmentCreatedBy")
@@ -170,6 +177,7 @@ model User {
 
 model Patient {
   id                    String        @id @default(cuid())
+  userId                String?       @unique
   patientNumber         String        @unique @db.VarChar(32)
   firstName             String        @db.VarChar(100)
   lastName              String        @db.VarChar(100)
@@ -192,6 +200,7 @@ model Patient {
   createdAt             DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
 
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   appointments Appointment[]
   visits       Visit[]
   clinicalNotes ClinicalNote[]
@@ -579,6 +588,7 @@ model AuditLog {
   action      String   @db.VarChar(100)
   entityType  String   @db.VarChar(100)
   entityId    String   @db.VarChar(64)
+  outcome     AuditOutcome @default(SUCCESS)
   before      Json?
   after       Json?
   metadata    Json?
@@ -593,6 +603,7 @@ model AuditLog {
   @@index([entityType, entityId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([createdAt])
+  @@index([outcome, createdAt])
   @@index([requestId])
 }
 

@@ -15,6 +15,11 @@ const refreshRequestLimiter = new FixedWindowRateLimiter(
   env.AUTH_REFRESH_RATE_LIMIT_MAX,
 );
 
+const registrationLimiter = new FixedWindowRateLimiter(
+  env.AUTH_LOGIN_RATE_LIMIT_WINDOW_MS,
+  env.AUTH_LOGIN_RATE_LIMIT_MAX,
+);
+
 export function createLoginRateLimitKey(request: Request, email: string): string {
   return `${getClientIp(request)}:${email.toLowerCase()}`;
 }
@@ -39,6 +44,24 @@ export function recordFailedLogin(key: string): void {
 export function resetLoginFailures(key: string): void {
   loginAttemptLimiter.reset(key);
 }
+
+export const registerRateLimit: RequestHandler = (request, response, next) => {
+  const decision = registrationLimiter.consume(getClientIp(request));
+
+  if (!decision.allowed) {
+    response.setHeader('Retry-After', String(decision.retryAfterSeconds));
+    next(
+      new AppError(
+        HTTP_STATUS.TOO_MANY_REQUESTS,
+        'Too many registration attempts. Try again later.',
+        'REGISTRATION_RATE_LIMITED',
+      ),
+    );
+    return;
+  }
+
+  next();
+};
 
 export const refreshRateLimit: RequestHandler = (request, response, next) => {
   const decision = refreshRequestLimiter.consume(getClientIp(request));

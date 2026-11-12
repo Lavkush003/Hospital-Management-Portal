@@ -185,7 +185,7 @@ async function checkServerAndMigrations(): Promise<CheckResult> {
     ORDER BY started_at
   `;
 
-  assert.equal(migrations.length, 6, 'Expected exactly six Prisma migrations');
+  assert.equal(migrations.length, 8, 'Expected exactly eight Prisma migrations');
   assert.ok(
     migrations.every(
       (migration) => migration.finished_at !== null && migration.rolled_back_at === null,
@@ -281,7 +281,7 @@ async function checkSeedData(): Promise<CheckResult> {
     prisma.invoice.count(),
     prisma.invoiceItem.count(),
     prisma.payment.count(),
-    prisma.auditLog.count(),
+    prisma.auditLog.count({ where: { entityId: { startsWith: 'seed-' } } }),
     prisma.idempotencyKey.count(),
   ]);
 

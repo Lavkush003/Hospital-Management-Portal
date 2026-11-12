@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { Prisma, Visit, VisitStatus } from '@prisma/client';
+import type { Prisma, VisitStatus } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { isForeignKeyConstraintError, isUniqueConstraintError } from '../../utils/database-errors';
 import { writeAuditLog } from '../../utils/audit';
@@ -41,31 +41,6 @@ function createVisitNumber(): string {
   const timestamp = Date.now().toString(36).toUpperCase();
   const randomSuffix = randomBytes(4).toString('hex').toUpperCase();
   return `VIS-${timestamp}-${randomSuffix}`;
-}
-
-function visitSnapshot(visit: Visit): Prisma.InputJsonObject {
-  return {
-    visitNumber: visit.visitNumber,
-    patientId: visit.patientId,
-    doctorId: visit.doctorId,
-    appointmentId: visit.appointmentId,
-    status: visit.status,
-    chiefComplaint: visit.chiefComplaint,
-    diagnosis: visit.diagnosis,
-    clinicalNotes: visit.clinicalNotes,
-    heightCm: visit.heightCm === null ? null : visit.heightCm.toNumber(),
-    weightKg: visit.weightKg === null ? null : visit.weightKg.toNumber(),
-    temperatureC: visit.temperatureC === null ? null : visit.temperatureC.toNumber(),
-    systolicBp: visit.systolicBp,
-    diastolicBp: visit.diastolicBp,
-    heartRate: visit.heartRate,
-    respiratoryRate: visit.respiratoryRate,
-    oxygenSaturation: visit.oxygenSaturation,
-    startedAt: visit.startedAt.toISOString(),
-    endedAt: visit.endedAt?.toISOString() ?? null,
-    followUpAt: visit.followUpAt?.toISOString() ?? null,
-    followUpNotes: visit.followUpNotes,
-  };
 }
 
 function visitNotActiveError(): AppError {
@@ -225,7 +200,7 @@ export async function createVisit(
           action: 'VISIT_CREATED',
           entityType: 'Visit',
           entityId: visit.id,
-          after: visitSnapshot(visit),
+          metadata: { status: visit.status },
           request,
         },
         transaction,
@@ -368,9 +343,7 @@ export async function updateVisit(
       throw visitNotFoundError();
     }
 
-    const current = await transaction.visit.findUniqueOrThrow({ where: { id: visitId } });
-
-    const updated = await transaction.visit.update({
+    await transaction.visit.update({
       where: { id: visitId },
       data: {
         ...(input.chiefComplaint !== undefined ? { chiefComplaint: input.chiefComplaint } : {}),
@@ -388,8 +361,7 @@ export async function updateVisit(
         action: 'VISIT_UPDATED',
         entityType: 'Visit',
         entityId: visitId,
-        before: visitSnapshot(current),
-        after: visitSnapshot(updated),
+        metadata: { changedFields: Object.keys(input) },
         request,
       },
       transaction,
@@ -457,9 +429,7 @@ export async function updateVisitStatus(
         action: 'VISIT_STATUS_CHANGED',
         entityType: 'Visit',
         entityId: visitId,
-        before: visitSnapshot(current),
-        after: visitSnapshot(updated),
-        metadata: { reason: input.reason ?? null },
+        metadata: { fromStatus: current.status, toStatus: updated.status },
         request,
       },
       transaction,

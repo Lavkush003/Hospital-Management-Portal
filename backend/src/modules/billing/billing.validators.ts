@@ -33,15 +33,13 @@ const positiveMoneySchema = moneySchema.refine((value) => Number(value) > 0, {
 const optionalText = (maxLength: number) =>
   z.string().trim().min(1, 'Value must not be empty when provided').max(maxLength).optional();
 
-const invoiceItemSchema = z
-  .object({
-    description: z.string().trim().min(1).max(300),
-    quantity: z.number().int().min(1).max(1_000_000),
-    unitPrice: moneySchema,
-    discountAmount: moneySchema.default('0'),
-    taxAmount: moneySchema.default('0'),
-  })
-  .strict();
+const invoiceItemSchema = z.object({
+  description: z.string().trim().min(1).max(300),
+  quantity: z.number().int().min(1).max(1_000_000),
+  unitPrice: moneySchema,
+  discountAmount: moneySchema.default('0'),
+  taxAmount: moneySchema.default('0'),
+});
 
 const invoiceDateFields = {
   invoiceDate: isoDateTimeSchema
@@ -57,33 +55,40 @@ export const createInvoiceBodySchema = z
     patientId: idSchema,
     visitId: idSchema.optional(),
     appointmentId: idSchema.optional(),
-    currency: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()).default('USD'),
+    currency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/)
+      .transform((value) => value.toUpperCase())
+      .default('USD'),
     ...invoiceDateFields,
     items: z.array(invoiceItemSchema).min(1).max(100),
     notes: optionalText(5_000),
   })
-  .strict()
-  .refine(
-    (value) => value.invoiceDate === undefined || value.dueAt >= value.invoiceDate,
-    { message: 'dueAt must be on or after invoiceDate', path: ['dueAt'] },
-  );
+  .refine((value) => value.invoiceDate === undefined || value.dueAt >= value.invoiceDate, {
+    message: 'dueAt must be on or after invoiceDate',
+    path: ['dueAt'],
+  });
 
-export const updateInvoiceBodySchema = z
-  .object({
-    patientId: idSchema.optional(),
-    visitId: idSchema.nullish(),
-    appointmentId: idSchema.nullish(),
-    currency: z.string().trim().regex(/^[A-Za-z]{3}$/).transform((value) => value.toUpperCase()).optional(),
-    invoiceDate: isoDateTimeSchema
-      .optional()
-      .refine((value) => value === undefined || value.getTime() <= Date.now(), {
-        message: 'invoiceDate must not be in the future',
-      }),
-    dueAt: isoDateTimeSchema.optional(),
-    items: z.array(invoiceItemSchema).min(1).max(100).optional(),
-    notes: z.string().trim().max(5_000).nullish(),
-  })
-  .strict();
+export const updateInvoiceBodySchema = z.object({
+  patientId: idSchema.optional(),
+  visitId: idSchema.nullish(),
+  appointmentId: idSchema.nullish(),
+  currency: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{3}$/)
+    .transform((value) => value.toUpperCase())
+    .optional(),
+  invoiceDate: isoDateTimeSchema
+    .optional()
+    .refine((value) => value === undefined || value.getTime() <= Date.now(), {
+      message: 'invoiceDate must not be in the future',
+    }),
+  dueAt: isoDateTimeSchema.optional(),
+  items: z.array(invoiceItemSchema).min(1).max(100).optional(),
+  notes: z.string().trim().max(5_000).nullish(),
+});
 
 export const invoiceStatusBodySchema = z
   .object({

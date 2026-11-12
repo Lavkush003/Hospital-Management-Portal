@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { accessRoutes } from '../modules/access/access.routes';
+import { analyticsRoutes } from '../modules/analytics/analytics.routes';
 import { appointmentRoutes } from '../modules/appointments/appointment.routes';
 import { authRoutes } from '../modules/auth/auth.routes';
 import { billingRoutes } from '../modules/billing/billing.routes';
@@ -14,6 +15,7 @@ export const apiRouter = Router();
 
 apiRouter.use('/health', healthRoutes);
 apiRouter.use('/auth', authRoutes);
+apiRouter.use('/admin', analyticsRoutes);
 apiRouter.use('/patients', patientRoutes);
 apiRouter.use('/doctors', doctorRoutes);
 apiRouter.use('/departments', departmentRoutes);

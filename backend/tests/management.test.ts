@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { config as loadDotenv } from 'dotenv';
+
+loadDotenv({ path: resolve(__dirname, '../.env'), quiet: true });
 
 const TEST_PASSWORD = 'Management-Test-Password-2026!';
 const RUN_ID = Date.now().toString(36).toLowerCase();
@@ -1264,6 +1268,15 @@ test('records patient and appointment audit events without sensitive credential 
   });
   assert.ok(patientAudits.some((audit) => audit.action === 'PATIENT_CREATED'));
   assert.ok(patientAudits.some((audit) => audit.action === 'PATIENT_UPDATED'));
+  const patientWriteAudits = patientAudits.filter(
+    (audit) => audit.action === 'PATIENT_CREATED' || audit.action === 'PATIENT_UPDATED',
+  );
+  assert.ok(patientWriteAudits.every((audit) => audit.before === null && audit.after === null));
+  assert.ok(
+    patientWriteAudits.every(
+      (audit) => Array.isArray((audit.metadata as { changedFields?: unknown[] }).changedFields),
+    ),
+  );
 
   const appointmentAudits = await prisma.auditLog.findMany({
     where: {
@@ -1277,6 +1290,15 @@ test('records patient and appointment audit events without sensitive credential 
   assert.ok(actions.has('APPOINTMENT_RESCHEDULED'));
   assert.ok(actions.has('APPOINTMENT_CANCELLED'));
   assert.ok(actions.has('APPOINTMENT_STATUS_CHANGED'));
+  for (const audit of appointmentAudits) {
+    for (const snapshot of [audit.before, audit.after]) {
+      if (snapshot && typeof snapshot === 'object') {
+        assert.equal('reason' in snapshot, false);
+        assert.equal('notes' in snapshot, false);
+        assert.equal('cancellationReason' in snapshot, false);
+      }
+    }
+  }
 
   const staffRoleAudit = await prisma.auditLog.findFirst({
     where: { entityType: 'Staff', entityId: createdStaffId, action: 'STAFF_ROLE_CHANGED' },

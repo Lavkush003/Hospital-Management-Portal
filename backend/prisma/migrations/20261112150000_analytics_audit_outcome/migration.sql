@@ -1,0 +1,17 @@
+CREATE TYPE "AuditOutcome" AS ENUM ('SUCCESS', 'FAILURE');
+
+ALTER TABLE "AuditLog"
+ADD COLUMN "outcome" "AuditOutcome" NOT NULL DEFAULT 'SUCCESS';
+
+UPDATE "AuditLog"
+SET "outcome" = 'FAILURE'
+WHERE "action" IN (
+  'AUTH_LOGIN_FAILED',
+  'AUTH_LOGIN_BLOCKED',
+  'AUTH_REFRESH_REUSE_DETECTED',
+  'AUTH_REFRESH_EXPIRED',
+  'AUTH_REFRESH_BLOCKED',
+  'AUTH_PASSWORD_CHANGE_FAILED'
+);
+
+CREATE INDEX "AuditLog_outcome_createdAt_idx" ON "AuditLog"("outcome", "createdAt");

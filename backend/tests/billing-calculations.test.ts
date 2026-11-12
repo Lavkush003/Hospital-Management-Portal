@@ -36,6 +36,34 @@ test('calculates invoice amounts exactly in cents', () => {
   assert.equal(result.items[1]?.lineTotal.toFixed(2), '0.55');
 });
 
+test('ignores client-supplied totals and recalculates them on the backend', () => {
+  const parsed = createInvoiceBodySchema.parse({
+    patientId: 'patient-test',
+    dueAt: '2026-12-01T00:00:00.000Z',
+    subtotal: '0.01',
+    discountAmount: '0.01',
+    taxAmount: '0.01',
+    totalAmount: '0.01',
+    items: [
+      {
+        description: 'Consultation',
+        quantity: 2,
+        unitPrice: '10.00',
+        discountAmount: '1.00',
+        taxAmount: '2.00',
+        lineTotal: '0.01',
+      },
+    ],
+  });
+  const result = calculateInvoice(parsed.items);
+
+  assert.equal(result.subtotal.toFixed(2), '20.00');
+  assert.equal(result.discountAmount.toFixed(2), '1.00');
+  assert.equal(result.taxAmount.toFixed(2), '2.00');
+  assert.equal(result.totalAmount.toFixed(2), '21.00');
+  assert.equal(result.items[0]?.lineTotal.toFixed(2), '21.00');
+});
+
 test('validates payment amounts and item discounts', () => {
   assert.equal(
     createPaymentBodySchema.safeParse({ amount: '0.00', method: 'CASH' }).success,

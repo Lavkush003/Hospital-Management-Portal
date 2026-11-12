@@ -8,6 +8,7 @@ export interface AuditEventInput {
   action: string;
   entityType: string;
   entityId: string;
+  outcome?: 'SUCCESS' | 'FAILURE';
   before?: Prisma.InputJsonValue;
   after?: Prisma.InputJsonValue;
   metadata?: Prisma.InputJsonObject;
@@ -23,6 +24,7 @@ export async function writeAuditLog(
     action: input.action,
     entityType: input.entityType,
     entityId: input.entityId,
+    outcome: input.outcome ?? 'SUCCESS',
     ipAddress: input.request.ipAddress,
     userAgent: input.request.userAgent,
     requestId: input.request.requestId,

@@ -31,6 +31,7 @@ interface PublicUserSource {
   createdAt: Date;
   doctor?: { id: string } | null;
   staff?: { id: string } | null;
+  patient?: { id: string } | null;
 }
 
 const publicUserSelect = {
@@ -46,6 +47,7 @@ const publicUserSelect = {
   authVersion: true,
   doctor: { select: { id: true } },
   staff: { select: { id: true } },
+  patient: { select: { id: true } },
 } satisfies Prisma.UserSelect;
 
 const refreshTokenUserInclude = {
@@ -85,6 +87,7 @@ export function toPublicUser(user: PublicUserSource): PublicUser {
     createdAt: user.createdAt,
     ...(user.doctor ? { doctorId: user.doctor.id } : {}),
     ...(user.staff ? { staffId: user.staff.id } : {}),
+    ...(user.patient ? { patientId: user.patient.id } : {}),
   };
 }
 
@@ -111,7 +114,8 @@ export async function login(
       action: 'AUTH_LOGIN_FAILED',
       entityType: 'User',
       entityId: 'unauthenticated',
-      metadata: { reason: 'UNKNOWN_EMAIL', email: input.email },
+      outcome: 'FAILURE',
+      metadata: { reason: 'UNKNOWN_EMAIL' },
       request: requestMetadata,
     });
     throw invalidCredentialsError();
@@ -125,6 +129,7 @@ export async function login(
       action: 'AUTH_LOGIN_FAILED',
       entityType: 'User',
       entityId: user.id,
+      outcome: 'FAILURE',
       metadata: { reason: 'INVALID_PASSWORD' },
       request: requestMetadata,
     });
@@ -137,6 +142,7 @@ export async function login(
       action: 'AUTH_LOGIN_BLOCKED',
       entityType: 'User',
       entityId: user.id,
+      outcome: 'FAILURE',
       metadata: { reason: 'ACCOUNT_INACTIVE', status: user.status },
       request: requestMetadata,
     });
@@ -250,6 +256,7 @@ export async function refreshSession(input: RefreshInput): Promise<AuthSession> 
           action: 'AUTH_REFRESH_REUSE_DETECTED',
           entityType: 'RefreshToken',
           entityId: token.id,
+          outcome: 'FAILURE',
           metadata: { familyId: token.familyId },
           request: input.requestMetadata,
         },
@@ -274,6 +281,7 @@ export async function refreshSession(input: RefreshInput): Promise<AuthSession> 
           action: 'AUTH_REFRESH_EXPIRED',
           entityType: 'RefreshToken',
           entityId: token.id,
+          outcome: 'FAILURE',
           metadata: { familyId: token.familyId },
           request: input.requestMetadata,
         },
@@ -298,6 +306,7 @@ export async function refreshSession(input: RefreshInput): Promise<AuthSession> 
           action: 'AUTH_REFRESH_BLOCKED',
           entityType: 'RefreshToken',
           entityId: token.id,
+          outcome: 'FAILURE',
           metadata: { reason: 'ACCOUNT_INACTIVE', status: token.user.status },
           request: input.requestMetadata,
         },
@@ -473,6 +482,7 @@ export async function changePassword(input: ChangePasswordInputWithActor): Promi
       action: 'AUTH_PASSWORD_CHANGE_FAILED',
       entityType: 'User',
       entityId: user.id,
+      outcome: 'FAILURE',
       metadata: { reason: 'INVALID_CURRENT_PASSWORD' },
       request: input.requestMetadata,
     });

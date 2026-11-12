@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import type { DiagnosticReport, DiagnosticReportStatus } from '@prisma/client';
+import type { DiagnosticReportStatus } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { writeAuditLog } from '../../utils/audit';
 import { AppError } from '../../utils/errors';
@@ -32,21 +32,6 @@ function reportNotFoundError(): AppError {
     'Diagnostic report not found',
     'DIAGNOSTIC_REPORT_NOT_FOUND',
   );
-}
-
-function reportSnapshot(report: DiagnosticReport): Prisma.InputJsonObject {
-  return {
-    reportNumber: report.reportNumber,
-    visitId: report.visitId,
-    type: report.type,
-    status: report.status,
-    testName: report.testName,
-    resultSummary: report.resultSummary,
-    resultDetails: report.resultDetails,
-    fileMetadata: report.fileMetadata ?? null,
-    orderedAt: report.orderedAt.toISOString(),
-    completedAt: report.completedAt?.toISOString() ?? null,
-  };
 }
 
 export async function listVisitReports(
@@ -135,10 +120,7 @@ export async function createVisitReport(
         action: 'DIAGNOSTIC_REPORT_CREATED',
         entityType: 'DiagnosticReport',
         entityId: report.id,
-        after: {
-          ...reportSnapshot(report),
-          patientId: visit.patientId,
-        },
+        metadata: { visitId, type: report.type, status: report.status },
         request,
       },
       transaction,
@@ -241,16 +223,12 @@ export async function updateVisitReport(
         action: 'DIAGNOSTIC_REPORT_UPDATED',
         entityType: 'DiagnosticReport',
         entityId: reportId,
-        before: reportSnapshot(current),
-        after: reportSnapshot(updated),
         metadata: {
-          reason: input.reason ?? null,
           statusTransition: statusTransition ?? null,
           changedFields: [
             ...changedMetadataFields,
             ...(statusTransition ? ['status' as const] : []),
           ],
-          patientId: visit.patientId,
         },
         request,
       },

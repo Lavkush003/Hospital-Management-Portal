@@ -14,8 +14,9 @@ import {
   recordFailedLogin,
   resetLoginFailures,
 } from './auth.rate-limit';
+import { registerPatientAccount } from './auth.registration.service';
 import { changePassword, login, logout, refreshSession, type AuthSession } from './auth.service';
-import type { ChangePasswordInput, LoginInput } from './auth.validators';
+import type { ChangePasswordInput, LoginInput, RegisterPatientInput } from './auth.validators';
 
 function setNoStoreHeaders(response: Response): void {
   response.setHeader('Cache-Control', 'no-store');
@@ -55,6 +56,17 @@ export const loginController: RequestHandler = async (request, response) => {
 
     throw error;
   }
+};
+
+export const registerPatientController: RequestHandler = async (request, response) => {
+  await registerPatientAccount(
+    request.body as RegisterPatientInput,
+    getRequestMetadata(request, response),
+  );
+  setNoStoreHeaders(response);
+  response.status(HTTP_STATUS.CREATED).json({
+    message: 'Patient account created. You can now sign in.',
+  });
 };
 
 export const refreshController: RequestHandler = async (request, response) => {
@@ -112,6 +124,7 @@ export const meController: RequestHandler = (request, response) => {
       createdAt: user.createdAt,
       ...(user.doctorId ? { doctorId: user.doctorId } : {}),
       ...(user.staffId ? { staffId: user.staffId } : {}),
+      ...(user.patientId ? { patientId: user.patientId } : {}),
     },
   });
 };

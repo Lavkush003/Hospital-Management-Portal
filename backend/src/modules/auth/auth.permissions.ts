@@ -68,6 +68,7 @@ const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {
     PERMISSIONS.CLINICAL_READ,
     PERMISSIONS.CLINICAL_MANAGE,
   ]),
+  PATIENT: new Set<Permission>([PERMISSIONS.PATIENTS_READ]),
 };
 
 export function hasPermission(role: UserRole, permission: Permission): boolean {

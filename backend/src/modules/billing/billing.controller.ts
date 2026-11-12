@@ -14,6 +14,7 @@ import {
   updateInvoiceStatus,
   updatePaymentStatus,
 } from './billing.service';
+import { serializeInvoice, serializePayment } from './billing.serializer';
 import type {
   CreateInvoiceBody,
   CreatePaymentBody,
@@ -30,7 +31,10 @@ export const listInvoicesController: RequestHandler = async (request, response) 
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.OK).json(result);
+  response.status(HTTP_STATUS.OK).json({
+    invoices: result.invoices.map(serializeInvoice),
+    pagination: result.pagination,
+  });
 };
 
 export const createInvoiceController: RequestHandler = async (request, response) => {
@@ -40,7 +44,7 @@ export const createInvoiceController: RequestHandler = async (request, response)
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.CREATED).json({ invoice });
+  response.status(HTTP_STATUS.CREATED).json({ invoice: serializeInvoice(invoice) });
 };
 
 export const getInvoiceController: RequestHandler = async (request, response) => {
@@ -50,7 +54,7 @@ export const getInvoiceController: RequestHandler = async (request, response) =>
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.OK).json({ invoice });
+  response.status(HTTP_STATUS.OK).json({ invoice: serializeInvoice(invoice) });
 };
 
 export const updateInvoiceController: RequestHandler = async (request, response) => {
@@ -61,7 +65,7 @@ export const updateInvoiceController: RequestHandler = async (request, response)
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.OK).json({ invoice });
+  response.status(HTTP_STATUS.OK).json({ invoice: serializeInvoice(invoice) });
 };
 
 export const updateInvoiceStatusController: RequestHandler = async (request, response) => {
@@ -72,7 +76,7 @@ export const updateInvoiceStatusController: RequestHandler = async (request, res
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.OK).json({ invoice });
+  response.status(HTTP_STATUS.OK).json({ invoice: serializeInvoice(invoice) });
 };
 
 export const invoicePaymentsController: RequestHandler = async (request, response) => {
@@ -82,7 +86,7 @@ export const invoicePaymentsController: RequestHandler = async (request, respons
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.OK).json({ payments });
+  response.status(HTTP_STATUS.OK).json({ payments: payments.map(serializePayment) });
 };
 
 export const createPaymentController: RequestHandler = async (request, response) => {
@@ -96,7 +100,10 @@ export const createPaymentController: RequestHandler = async (request, response)
   );
   if (result.replayed) response.setHeader('Idempotency-Replayed', 'true');
   setNoStore(response);
-  response.status(HTTP_STATUS.CREATED).json(result);
+  response.status(HTTP_STATUS.CREATED).json({
+    payment: serializePayment(result.payment),
+    replayed: result.replayed,
+  });
 };
 
 export const getPaymentController: RequestHandler = async (request, response) => {
@@ -106,7 +113,7 @@ export const getPaymentController: RequestHandler = async (request, response) =>
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.OK).json({ payment });
+  response.status(HTTP_STATUS.OK).json({ payment: serializePayment(payment) });
 };
 
 export const updatePaymentStatusController: RequestHandler = async (request, response) => {
@@ -117,7 +124,7 @@ export const updatePaymentStatusController: RequestHandler = async (request, res
     getRequestMetadata(request, response),
   );
   setNoStore(response);
-  response.status(HTTP_STATUS.OK).json({ payment });
+  response.status(HTTP_STATUS.OK).json({ payment: serializePayment(payment) });
 };
 
 export const invoiceHistoryController: RequestHandler = async (request, response) => {

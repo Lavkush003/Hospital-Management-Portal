@@ -10,7 +10,7 @@ export const ACCESS_TOKEN_TTL_MS = parseDurationToMs(env.JWT_ACCESS_EXPIRES_IN);
 export const REFRESH_TOKEN_TTL_MS = parseDurationToMs(env.JWT_REFRESH_EXPIRES_IN);
 export const ACCESS_TOKEN_TTL_SECONDS = Math.floor(ACCESS_TOKEN_TTL_MS / 1_000);
 
-const USER_ROLES: ReadonlySet<string> = new Set(['ADMIN', 'FRONT_DESK', 'CLINICIAN']);
+const USER_ROLES: ReadonlySet<string> = new Set(['ADMIN', 'FRONT_DESK', 'CLINICIAN', 'PATIENT']);
 
 export interface AccessTokenClaims extends JwtPayload {
   sub: string;

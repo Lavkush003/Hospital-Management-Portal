@@ -7,14 +7,21 @@ import {
   loginController,
   logoutController,
   meController,
+  registerPatientController,
   refreshController,
 } from './auth.controller';
-import { refreshRateLimit } from './auth.rate-limit';
-import { changePasswordSchema, loginSchema } from './auth.validators';
+import { refreshRateLimit, registerRateLimit } from './auth.rate-limit';
+import { changePasswordSchema, loginSchema, registerPatientSchema } from './auth.validators';
 
 export const authRoutes = Router();
 
 authRoutes.post('/login', validateBody(loginSchema), loginController);
+authRoutes.post(
+  '/register',
+  registerRateLimit,
+  validateBody(registerPatientSchema),
+  registerPatientController,
+);
 authRoutes.post('/refresh', refreshRateLimit, requireCsrfToken, refreshController);
 authRoutes.post('/logout', refreshRateLimit, requireCsrfToken, logoutController);
 authRoutes.get('/me', authenticate, meController);

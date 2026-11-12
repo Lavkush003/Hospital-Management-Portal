@@ -12,6 +12,7 @@ export interface AuthenticatedUser {
   createdAt: Date;
   doctorId: string | null;
   staffId: string | null;
+  patientId: string | null;
   authVersion: number;
 }
 
@@ -33,6 +34,7 @@ export interface PublicUser {
   createdAt: Date;
   doctorId?: string;
   staffId?: string;
+  patientId?: string;
 }
 
 export interface RequestMetadata {

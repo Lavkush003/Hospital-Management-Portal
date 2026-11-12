@@ -29,6 +29,33 @@ tokens stop working immediately.
 
 ## Endpoints
 
+### `POST /api/auth/register`
+
+Public self-registration is limited to patient accounts. The endpoint creates a new patient
+profile and a `PATIENT` user in one transaction; it never accepts a role from the request and
+does not link to an existing patient record. Email ownership is not verified by this API, so
+patients with an existing hospital record must contact hospital staff to link it.
+
+Request:
+
+```json
+{
+  "email": "patient@example.test",
+  "password": "a-password-with-at-least-12-characters",
+  "firstName": "Taylor",
+  "lastName": "Patient",
+  "dateOfBirth": "1990-04-12",
+  "phone": "+1-555-0100",
+  "gender": "UNKNOWN"
+}
+```
+
+Success: `201 Created` with a message. The patient can then sign in using
+`POST /api/auth/login`. Registration attempts are rate limited by client IP.
+
+If the email already belongs to a user or patient record, the endpoint returns
+`409 REGISTRATION_CONFLICT` with the same message in both cases.
+
 ### `POST /api/auth/login`
 
 Request:
@@ -188,24 +215,28 @@ Validation failures also include `details`, an array of field paths and messages
 
 ## Role permissions
 
-| Permission               | Admin | Front desk | Clinician |
-| ------------------------ | ----- | ---------- | --------- |
-| `users:manage`           | Yes   | No         | No        |
-| `patients:create`        | Yes   | Yes        | No        |
-| `patients:read`          | Yes   | Yes        | Yes       |
-| `patients:update`        | Yes   | Yes        | No        |
-| `patients:clinical:read` | Yes   | No         | Yes       |
-| `doctors:read`           | Yes   | Yes        | Yes       |
-| `doctors:manage`         | Yes   | No         | No        |
-| `departments:read`       | Yes   | Yes        | Yes       |
-| `departments:manage`     | Yes   | No         | No        |
-| `staff:read`             | Yes   | No         | No        |
-| `staff:manage`           | Yes   | No         | No        |
-| `appointments:read`      | Yes   | Yes        | Yes       |
-| `appointments:manage`    | Yes   | Yes        | No        |
-| `schedules:read`         | Yes   | Yes        | Yes       |
-| `schedules:manage`       | Yes   | No         | No        |
-| `billing:read`           | Yes   | Yes        | No        |
+| Permission               | Admin | Front desk | Clinician | Patient |
+| ------------------------ | ----- | ---------- | --------- | ------- |
+| `patients:read`          | Yes   | Yes        | Yes       | Yes*    |
+| `users:manage`           | Yes   | No         | No        | No      |
+| `patients:create`        | Yes   | Yes        | No        | No      |
+| `patients:update`        | Yes   | Yes        | No        | No      |
+| `patients:clinical:read` | Yes   | No         | Yes       | No      |
+| `doctors:read`           | Yes   | Yes        | Yes       | No      |
+| `doctors:manage`         | Yes   | No         | No        | No      |
+| `departments:read`       | Yes   | Yes        | Yes       | No      |
+| `departments:manage`     | Yes   | No         | No        | No      |
+| `staff:read`             | Yes   | No         | No        | No      |
+| `staff:manage`           | Yes   | No         | No        | No      |
+| `appointments:read`      | Yes   | Yes        | Yes       | No      |
+| `appointments:manage`    | Yes   | Yes        | No        | No      |
+| `schedules:read`         | Yes   | Yes        | Yes       | No      |
+| `schedules:manage`       | Yes   | No         | No        | No      |
+| `billing:read`           | Yes   | Yes        | No        | No      |
+
+Patient accounts receive only `patients:read` (*scoped to the linked profile); patient list
+and detail queries are scoped to the single profile linked to the authenticated user. They cannot read clinical fields,
+other patients, appointments, or billing records.
 
 ## Protected resource endpoints
 

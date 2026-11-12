@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import type { Patient, Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { writeAuditLog } from '../../utils/audit';
@@ -9,6 +8,7 @@ import { paginationMeta, paginationWindow, type PaginationMeta } from '../../uti
 import { hasPermission, PERMISSIONS } from '../auth/auth.permissions';
 import type { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { assertPatientAccess, patientNotFoundError } from './patient-access';
+import { createPatientNumber } from './patient-number';
 import type {
   PatientCreateInput,
   PatientListQuery,
@@ -18,12 +18,6 @@ import type {
 export interface PatientListResult {
   patients: ReturnType<typeof serializePatient>[];
   pagination: PaginationMeta;
-}
-
-function createPatientNumber(): string {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const randomSuffix = randomBytes(4).toString('hex').toUpperCase();
-  return `PAT-${timestamp}-${randomSuffix}`;
 }
 
 export function serializePatient(patient: Patient, actor: AuthenticatedUser): unknown {
@@ -58,24 +52,6 @@ export function serializePatient(patient: Patient, actor: AuthenticatedUser): un
     ...base,
     allergies: patient.allergies,
     notes: patient.notes,
-  };
-}
-
-function patientAuditSnapshot(patient: Patient): Prisma.InputJsonObject {
-  return {
-    patientNumber: patient.patientNumber,
-    firstName: patient.firstName,
-    lastName: patient.lastName,
-    dateOfBirth: patient.dateOfBirth.toISOString().slice(0, 10),
-    gender: patient.gender,
-    bloodGroup: patient.bloodGroup,
-    phone: patient.phone,
-    email: patient.email,
-    emergencyContactName: patient.emergencyContactName,
-    emergencyContactPhone: patient.emergencyContactPhone,
-    allergies: patient.allergies,
-    notes: patient.notes,
-    status: patient.status,
   };
 }
 
@@ -120,7 +96,7 @@ export async function createPatient(
           action: 'PATIENT_CREATED',
           entityType: 'Patient',
           entityId: patient.id,
-          after: patientAuditSnapshot(patient),
+          metadata: { changedFields: Object.keys(input) },
           request,
         },
         transaction,
@@ -194,8 +170,7 @@ export async function updatePatient(
         action: 'PATIENT_UPDATED',
         entityType: 'Patient',
         entityId: patientId,
-        before: patientAuditSnapshot(current),
-        after: patientAuditSnapshot(updated),
+        metadata: { changedFields: Object.keys(input) },
         request,
       },
       transaction,
@@ -231,6 +206,8 @@ export async function listPatients(
         { visits: { some: { doctor: { userId: actor.id } } } },
       ],
     });
+  } else if (actor.role === 'PATIENT') {
+    conditions.push({ userId: actor.id });
   }
 
   const where: Prisma.PatientWhereInput = {

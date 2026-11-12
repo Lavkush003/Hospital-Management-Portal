@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { Prescription, PrescriptionStatus, Prisma } from '@prisma/client';
+import type { PrescriptionStatus } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { writeAuditLog } from '../../utils/audit';
 import { AppError } from '../../utils/errors';
@@ -32,16 +32,6 @@ function prescriptionNotFoundError(): AppError {
     'Prescription not found',
     'PRESCRIPTION_NOT_FOUND',
   );
-}
-
-function prescriptionSnapshot(prescription: Prescription): Prisma.InputJsonObject {
-  return {
-    prescriptionNumber: prescription.prescriptionNumber,
-    visitId: prescription.visitId,
-    status: prescription.status,
-    notes: prescription.notes,
-    issuedAt: prescription.issuedAt.toISOString(),
-  };
 }
 
 export async function listVisitPrescriptions(
@@ -139,18 +129,7 @@ export async function createVisitPrescription(
         action: 'PRESCRIPTION_CREATED',
         entityType: 'Prescription',
         entityId: prescription.id,
-        after: {
-          ...prescriptionSnapshot(prescription),
-          items: prescription.items.map((item) => ({
-            medicationName: item.medicationName,
-            dosage: item.dosage,
-            frequency: item.frequency,
-            durationDays: item.durationDays,
-            quantity: item.quantity,
-            instructions: item.instructions,
-          })),
-          patientId: visit.patientId,
-        },
+        metadata: { visitId, itemCount: prescription.items.length },
         request,
       },
       transaction,
@@ -218,12 +197,7 @@ export async function updatePrescriptionStatus(
         action: 'PRESCRIPTION_STATUS_CHANGED',
         entityType: 'Prescription',
         entityId: prescriptionId,
-        before: prescriptionSnapshot(current),
-        after: prescriptionSnapshot(updated),
-        metadata: {
-          reason: input.reason ?? null,
-          patientId: visit.patientId,
-        },
+        metadata: { fromStatus: current.status, toStatus: updated.status },
         request,
       },
       transaction,

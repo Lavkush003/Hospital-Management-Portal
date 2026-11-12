@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import type { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { config as loadDotenv } from 'dotenv';
+
+loadDotenv({ path: resolve(__dirname, '../.env'), quiet: true });
 
 const TEST_PASSWORD = 'Billing-Test-Password-2026!';
 const RUN_ID = Date.now().toString(36).toLowerCase();
@@ -277,6 +281,8 @@ test('calculates invoices, reconciles simulated payments, and preserves billing 
   assert.equal(invoice.discountAmount, '5.50');
   assert.equal(invoice.taxAmount, '8.05');
   assert.equal(invoice.totalAmount, '103.55');
+  assert.equal(invoice.amountPaid, '0.00');
+  assert.equal(invoice.balanceDue, '103.55');
   assert.equal(invoice.items[0]?.lineTotal, '103.00');
 
   const invalidDiscount = await api('/billing/invoices', {
@@ -371,6 +377,8 @@ test('calculates invoices, reconciles simulated payments, and preserves billing 
   assert.equal((await api(`/billing/invoices/${invoiceId}`, { token: adminToken })).status, 200);
   const partialInvoice = await api(`/billing/invoices/${invoiceId}`, { token: adminToken });
   assert.equal((partialInvoice.body as InvoiceBody).invoice.status, 'PARTIALLY_PAID');
+  assert.equal((partialInvoice.body as InvoiceBody).invoice.amountPaid, '30.00');
+  assert.equal((partialInvoice.body as InvoiceBody).invoice.balanceDue, '73.55');
 
   const overpayment = await api(`/billing/invoices/${invoiceId}/payments`, {
     method: 'POST',
@@ -398,6 +406,8 @@ test('calculates invoices, reconciles simulated payments, and preserves billing 
 
   const paidInvoiceResponse = await api(`/billing/invoices/${invoiceId}`, { token: adminToken });
   assert.equal((paidInvoiceResponse.body as InvoiceBody).invoice.status, 'PAID');
+  assert.equal((paidInvoiceResponse.body as InvoiceBody).invoice.amountPaid, '103.55');
+  assert.equal((paidInvoiceResponse.body as InvoiceBody).invoice.balanceDue, '0.00');
   const finalStatus = await api(`/billing/invoices/${invoiceId}/status`, {
     method: 'PATCH',
     body: { status: 'VOID' },

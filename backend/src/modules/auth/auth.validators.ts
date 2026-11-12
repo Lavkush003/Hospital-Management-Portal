@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateOnlySchema } from '../../utils/validation';
 
 export const PASSWORD_MIN_LENGTH = 12;
 export const PASSWORD_MAX_BYTES = 72;
@@ -41,5 +42,18 @@ export const changePasswordSchema = z
   })
   .strict();
 
+export const registerPatientSchema = z
+  .object({
+    email: emailSchema,
+    password: newPasswordSchema,
+    firstName: z.string().trim().min(1).max(100),
+    lastName: z.string().trim().min(1).max(100),
+    dateOfBirth: dateOnlySchema,
+    phone: z.string().trim().min(1).max(32).optional(),
+    gender: z.enum(['MALE', 'FEMALE', 'OTHER', 'UNKNOWN']).default('UNKNOWN'),
+  })
+  .strict();
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type RegisterPatientInput = z.infer<typeof registerPatientSchema>;

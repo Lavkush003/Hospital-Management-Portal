@@ -157,10 +157,7 @@ function appointmentSnapshot(appointment: Appointment): Prisma.InputJsonObject {
     scheduledStart: appointment.scheduledStart.toISOString(),
     scheduledEnd: appointment.scheduledEnd.toISOString(),
     status: appointment.status,
-    reason: appointment.reason,
-    notes: appointment.notes,
     cancelledAt: appointment.cancelledAt?.toISOString() ?? null,
-    cancellationReason: appointment.cancellationReason,
   };
 }
 
@@ -419,7 +416,6 @@ export async function rescheduleAppointment(
             after: appointmentSnapshot(updated),
             metadata: {
               source: 'appointment-service',
-              reason: parsed.reason ?? null,
             },
             ...auditRequestFields(request),
           },
@@ -499,10 +495,7 @@ export async function cancelAppointment(
             entityId: current.id,
             before: appointmentSnapshot(current),
             after: appointmentSnapshot(updated),
-            metadata: {
-              source: 'appointment-service',
-              reason: parsed.cancellationReason,
-            },
+            metadata: { source: 'appointment-service' },
             ...auditRequestFields(request),
           },
         });
@@ -579,10 +572,7 @@ export async function updateAppointmentStatus(
         entityId: current.id,
         before: appointmentSnapshot(current),
         after: appointmentSnapshot(updated),
-        metadata: {
-          source: 'appointment-service',
-          reason: parsed.reason ?? null,
-        },
+        metadata: { source: 'appointment-service' },
         ...auditRequestFields(request),
       },
     });

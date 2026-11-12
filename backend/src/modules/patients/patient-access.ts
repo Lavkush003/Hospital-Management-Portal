@@ -29,6 +29,11 @@ export async function assertPatientAccess(
   actor: AuthenticatedUser,
   patientId: string,
 ): Promise<void> {
+  if (actor.role === 'PATIENT') {
+    if (actor.patientId !== patientId) throw patientNotFoundError();
+    return;
+  }
+
   if (actor.role !== 'CLINICIAN') {
     return;
   }

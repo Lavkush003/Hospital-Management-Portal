@@ -30,14 +30,26 @@
     min-width: 320px;
     min-height: 100vh;
     color: #0f172a;
-    background-color: #f8fafc;
-    background-image:
-      radial-gradient(65rem 32rem at 85% -12%, rgb(219 234 254 / 0.9), transparent),
-      radial-gradient(42rem 28rem at -5% 8%, rgb(204 251 241 / 0.65), transparent);
-    background-repeat: no-repeat;
+    background-color: #f5f8fc;
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid #0f766e;
+    outline-offset: 2px;
   }
 
   #root {
