@@ -1,8 +1,8 @@
 {
   "name": "hospital-management-system",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Modular monolith foundation for the Algions AI Labs Hospital Management System assessment.",
+  "description": "MERN Stack Hospital Management System - patients, doctors, scheduling, clinical records, billing, reporting and audit.",
   "workspaces": [
     "frontend",
     "backend"
@@ -11,39 +11,19 @@
     "dev": "concurrently --names API,WEB --prefix-colors blue,magenta \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
     "dev:backend": "npm run dev --workspace backend",
     "dev:frontend": "npm run dev --workspace frontend",
-    "build": "npm run build --workspace backend && npm run build --workspace frontend",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "lint:fix": "npm run lint:fix --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "start:backend": "npm run start --workspace backend",
+    "build": "npm run build --workspace frontend",
+    "seed": "npm run seed --workspace backend",
+    "test": "npm run test --workspace backend && npm run test --workspace frontend",
     "test:backend": "npm run test --workspace backend",
     "test:frontend": "npm run test --workspace frontend",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "db:generate": "npm run db:generate --workspace backend",
-    "db:validate": "npm run db:validate --workspace backend",
-    "db:migrate": "npm run db:migrate --workspace backend",
-    "db:deploy": "npm run db:deploy --workspace backend",
-    "db:seed": "npm run db:seed --workspace backend",
-    "db:reset": "npm run db:reset --workspace backend",
-    "db:verify": "npm run db:verify --workspace backend",
-    "db:studio": "npm run db:studio --workspace backend",
-    "start:backend": "npm run start --workspace backend",
-    "preview:frontend": "npm run preview --workspace frontend",
-    "verify": "npm run typecheck && npm run lint && npm run build"
+    "lint": "npm run lint --workspace backend && npm run lint --workspace frontend"
   },
   "engines": {
     "node": ">=20.19.0",
-    "npm": ">=10.8.2"
+    "npm": ">=10.0.0"
   },
-  "packageManager": "npm@10.8.2",
   "devDependencies": {
-    "concurrently": "9.2.5",
-    "prettier": "3.6.2"
-  },
-  "overrides": {
-    "deepmerge-ts": "8.0.0",
-    "minimatch": "11.0.1",
-    "rollup": "npm:@rollup/wasm-node@4.68.2"
+    "concurrently": "^9.1.2"
   }
 }
